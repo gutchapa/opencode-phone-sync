@@ -28,43 +28,88 @@ middleman app, without ads, and with attachments.
 
 - Python 3.9+ on the machine running the proxy. No third-party packages.
 - A running `opencode serve` reachable on `127.0.0.1:4096` by default.
-- A phone on the same tailnet or LAN.
+- A phone on the same Tailscale tailnet. The proxy binds to loopback and is
+  reached through `tailscale serve`, which supplies TLS. Any equivalent private
+  network plus a TLS terminator works too; do not expose the port publicly.
 
 ## Run
 
 ```bash
 export OPENCODE_USERNAME=opencode          # optional, this is the default
 export OPENCODE_PASSWORD='<your-password>' # required; the proxy exits without it
+export OPENCODE_SYNC_HOST=127.0.0.1        # loopback only; reach it through tailscale serve
 
 python3 serve.py
 ```
 
-Then open `http://<mac-tailscale-or-lan-ip>:8787` and enter the same username and
+Then open `https://<machine>.<tailnet>.ts.net` and enter the same username and
 password in the Connect dialog.
 
 Environment variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `OPENCODE_PASSWORD` | none, required | password sent to the upstream server |
+| `OPENCODE_PASSWORD` | none, required | password required from clients and sent upstream |
 | `OPENCODE_SERVER_PASSWORD` | none | alternative name for the above |
 | `OPENCODE_USERNAME` | `opencode` | basic-auth username |
 | `OPENCODE_UPSTREAM_HOST` | `127.0.0.1` | where `opencode serve` listens |
 | `OPENCODE_UPSTREAM_PORT` | `4096` | upstream port |
-| `OPENCODE_SYNC_HOST` | `0.0.0.0` | listen address |
+| `OPENCODE_SYNC_HOST` | `0.0.0.0` | listen address; use `127.0.0.1` with tailscale serve |
 | `OPENCODE_SYNC_PORT` | `8787` | listen port |
 
 Use the system interpreter on macOS (`/usr/bin/python3`) if a per-app firewall
 such as LuLu blocks a uv- or Homebrew-managed Python on the Tailscale interface.
 
+## HTTPS with Tailscale (recommended)
+
+Plain HTTP over Tailscale is encrypted by WireGuard but browsers still call it
+insecure, and a direct LAN IP is plaintext. Terminate TLS with `tailscale serve`
+and keep the proxy on loopback:
+
+```bash
+# once, in the Tailscale admin console: DNS -> HTTPS Certificates -> Enable HTTPS
+tailscale serve --bg --https=443 http://127.0.0.1:8787
+tailscale serve status
+```
+
+The UI is then at `https://<machine>.<tailnet>.ts.net`, certificate issued by
+Let's Encrypt and renewed automatically, reachable from your tailnet only. The
+proxy on `127.0.0.1:8787` is not reachable from the LAN or from other tailnet
+nodes directly.
+
+`tailscale serve` keeps its configuration across reboots. The proxy itself does
+not, unless you run it as a login agent.
+
+## Run at login (macOS, optional)
+
+`run.sh` reads the password from the login Keychain, so no secret sits in a plist
+or in shell history.
+
+```bash
+security add-generic-password -s opencode-phone-sync -a opencode -w  # prompts once
+
+mkdir -p ~/opencode-phone-sync
+cp serve.py index.html run.sh ~/opencode-phone-sync/
+cp launchd/local.opencode-phone-sync.plist ~/Library/LaunchAgents/
+# replace YOUR_USER in the plist with your short username, then:
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.opencode-phone-sync.plist
+```
+
+`KeepAlive` restarts the proxy if it exits. Check it with:
+
+```bash
+launchctl print gui/$(id -u)/local.opencode-phone-sync | grep -E "state|pid"
+tail -n 20 ~/opencode-phone-sync/launchd.log
+```
+
+To stop it: `launchctl bootout gui/$(id -u)/local.opencode-phone-sync`.
+
 ## Security
 
 Read this before exposing the port.
 
-- The proxy speaks **plain HTTP**. Over Tailscale the traffic is encrypted by
-  WireGuard, but it is not TLS: no certificate, and browsers will mark the page
-  "Not secure". Put it behind `tailscale serve`, Caddy, nginx, or an SSH tunnel if
-  you want TLS.
+- Serve it over TLS. With `tailscale serve` that is automatic and tailnet-only;
+  without TLS the Basic-auth header is protected only by the underlying VPN.
 - Every `/api/*` and `/global/*` request must carry the Basic `Authorization`
   header matching `OPENCODE_USERNAME` / `OPENCODE_PASSWORD`. Anything else gets
   `401` with a `WWW-Authenticate` challenge, compared in constant time. The static

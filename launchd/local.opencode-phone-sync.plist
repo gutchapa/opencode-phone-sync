@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copy to ~/Library/LaunchAgents/local.opencode-phone-sync.plist
+  Replace YOUR_USER, then load it:
+
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.opencode-phone-sync.plist
+
+  The password is not in this file. It lives in the login Keychain and is read
+  by run.sh.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.opencode-phone-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>/Users/YOUR_USER/opencode-phone-sync/run.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>WorkingDirectory</key>
+  <string>/Users/YOUR_USER/opencode-phone-sync</string>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USER/opencode-phone-sync/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USER/opencode-phone-sync/launchd.log</string>
+</dict>
+</plist>
