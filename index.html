@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v12</title>
+  <title>OpenCode Sync v13</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -109,7 +109,7 @@
       padding: 10px 12px; display: flex; gap: 8px; align-items: flex-end;
     }
     .composer textarea {
-      flex: 1; min-height: 44px; max-height: 140px; resize: vertical;
+      flex: 1; min-height: 96px; max-height: 240px; resize: vertical;
       border-radius: 10px; border: 1px solid var(--border);
       background: var(--bg); color: var(--text); padding: 10px; font: inherit;
     }
@@ -220,7 +220,7 @@
       color: var(--muted);
       white-space: pre-wrap;
       word-break: break-word;
-      max-height: 280px;
+      max-height: 420px;
       overflow: auto;
       border-top: 1px solid var(--border);
       margin-top: 0;
@@ -254,7 +254,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v12</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v13</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -303,7 +303,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v12';
+    const BUILD = 'v13';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
