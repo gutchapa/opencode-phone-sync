@@ -11,6 +11,10 @@ The OpenCode UI is built for a terminal or desktop. This lets you read a running
 session and send messages from a phone, over Tailscale or your LAN, without a
 middleman app, without ads, and with attachments.
 
+No ads, no accounts, no telemetry, no "upgrade" prompts. Attach photos and files
+straight from the phone, answer the agent's questions, stop a run that is going
+the wrong way, and see when every message was sent.
+
 ## Features
 
 - Transcript of the recent messages of any session, newest at the bottom.
