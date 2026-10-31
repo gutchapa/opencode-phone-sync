@@ -12,6 +12,7 @@ Phone / browser: http://<mac-tailscale-or-lan-ip>:8787
 from __future__ import annotations
 
 import base64
+import hmac
 import http.client
 import http.server
 import os
@@ -49,7 +50,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
-        self._cors()
         self.end_headers()
 
     def do_GET(self) -> None:
@@ -75,10 +75,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_PUT(self) -> None:
         return self.do_POST()
 
-    def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
+    def _authorized(self) -> bool:
+        got = (self.headers.get("Authorization") or "").encode()
+        return hmac.compare_digest(got, basic_auth_header().encode())
+
+    def _unauthorized(self) -> None:
+        body = b'{"error":{"message":"unauthorized"}}'
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("WWW-Authenticate", 'Basic realm="opencode"')
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_index(self) -> None:
         path = os.path.join(ROOT, "index.html")
@@ -98,6 +106,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(413, "Payload too large")
             return
         body = self.rfile.read(length) if length else None
+        if not self._authorized():
+            return self._unauthorized()
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if parsed.query:
@@ -121,7 +131,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(502)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(msg)))
-            self._cors()
             self.end_headers()
             self.wfile.write(msg)
             return
@@ -135,7 +144,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 continue
             self.send_header(k, v)
         self.send_header("Content-Length", str(len(data)))
-        self._cors()
         self.end_headers()
         self.wfile.write(data)
 

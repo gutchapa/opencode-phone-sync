@@ -63,14 +63,16 @@ Read this before exposing the port.
 
 - The proxy speaks **plain HTTP**. Over Tailscale the traffic is encrypted by
   WireGuard, but it is not TLS: no certificate, and browsers will mark the page
-  "Not secure".
-- `serve.py` does **not** check the `Authorization` header of incoming requests.
-  It adds its own upstream credentials to every proxied call. The Connect dialog
-  is therefore cosmetic unless something in front of the proxy enforces auth.
-- `Access-Control-Allow-Origin: *` is sent on proxied responses, so any page that
-  can reach the port can call the API.
+  "Not secure". Put it behind `tailscale serve`, Caddy, nginx, or an SSH tunnel if
+  you want TLS.
+- Every `/api/*` and `/global/*` request must carry the Basic `Authorization`
+  header matching `OPENCODE_USERNAME` / `OPENCODE_PASSWORD`. Anything else gets
+  `401` with a `WWW-Authenticate` challenge, compared in constant time. The static
+  `index.html` itself is served without auth, so the login form can load.
+- No CORS headers are sent. The UI is same-origin, and other origins cannot read
+  proxied responses.
 - The API it proxies can run shell commands through the agent. Treat the port as
-  equivalent to a shell on the host.
+  equivalent to a shell on the host, and do not expose it to the public internet.
 
 Put it behind something that terminates TLS and checks credentials: `tailscale
 serve`, Caddy, nginx, or an SSH tunnel. Do not expose it to the public internet.
