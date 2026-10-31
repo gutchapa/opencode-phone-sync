@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>OpenCode Sync v11</title>
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
+      --text: #e8eaed; --muted: #9aa0a6; --user: #1e4d8c;
+      --assistant: #1a2332; --danger: #f07178; --chip: #222833;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      font: 440 14px/1.45 -apple-system, system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    #app { display: flex; height: 100dvh; }
+    aside {
+      width: min(320px, 40vw); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; background: var(--panel);
+    }
+    aside header, main header {
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    aside header h1, main header h1 {
+      font-size: 15px; margin: 0; font-weight: 600; flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .search {
+      margin: 8px 12px; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      width: calc(100% - 24px);
+    }
+    #sessions { overflow: auto; flex: 1; }
+    .session { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .session:hover, .session.active { background: #1f2430; }
+    .session .title { font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    #transcript {
+      flex: 1; overflow: auto; padding: 14px;
+      display: flex; flex-direction: column; gap: 10px;
+      align-items: stretch;
+    }
+    .msg {
+      width: fit-content;
+      max-width: min(85%, 640px);
+      padding: 10px 12px; border-radius: 14px;
+      border: 1px solid var(--border);
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.user {
+      background: var(--user);
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+      margin-left: auto;
+    }
+    .msg.assistant, .msg.system, .msg.synthetic, .msg.shell, .msg.skill {
+      background: var(--assistant);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+      margin-right: auto;
+    }
+    .msg .role {
+      font-size: 11px; color: var(--muted); margin-bottom: 4px;
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .msg .role .ts {
+      text-transform: none; letter-spacing: 0; opacity: .75;
+    }
+    .msg .tool {
+      margin-top: 6px; padding: 6px 8px; border-radius: 8px;
+      background: rgba(0,0,0,.25); font-size: 12px; color: var(--muted);
+    }
+    .msg .attach {
+      display: inline-block; margin-top: 6px; padding: 4px 8px;
+      border-radius: 8px; background: rgba(255,255,255,.08); font-size: 12px;
+    }
+    .msg img.preview {
+      display: block; max-width: 100%; max-height: 220px;
+      border-radius: 8px; margin-top: 6px;
+    }
+    .composer-wrap {
+      border-top: 1px solid var(--border); background: var(--panel);
+    }
+    #attachBar {
+      display: none; gap: 8px; flex-wrap: wrap; padding: 8px 12px 0;
+      align-items: center;
+    }
+    #attachBar.show { display: flex; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--chip); border: 1px solid var(--border);
+      border-radius: 999px; padding: 4px 8px 4px 6px; font-size: 12px;
+      max-width: 100%;
+    }
+    .chip img {
+      width: 28px; height: 28px; object-fit: cover; border-radius: 6px;
+    }
+    .chip button {
+      border: 0; background: transparent; color: var(--muted);
+      padding: 0 2px; cursor: pointer; font-size: 14px; line-height: 1;
+    }
+    .composer {
+      padding: 10px 12px; display: flex; gap: 8px; align-items: flex-end;
+    }
+    .composer textarea {
+      flex: 1; min-height: 44px; max-height: 140px; resize: vertical;
+      border-radius: 10px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); padding: 10px; font: inherit;
+    }
+    button, .btn {
+      border: 1px solid var(--border); background: #222833; color: var(--text);
+      border-radius: 8px; padding: 8px 12px; cursor: pointer; font: inherit;
+    }
+    button.primary { background: #2b4c7e; border-color: #3a62a0; }
+    button.send {
+      width: 44px; height: 44px; min-width: 44px; padding: 0;
+      border-radius: 50%;
+      background: #ff6b2c; border-color: #ff6b2c; color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(255, 107, 44, .35);
+    }
+    button.send:hover:not(:disabled) { background: #ff814a; border-color: #ff814a; }
+    button.send:active:not(:disabled) { background: #e85a1a; border-color: #e85a1a; }
+    button.send svg { width: 20px; height: 20px; display: block; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.icon {
+      min-width: 44px; min-height: 44px; padding: 8px; font-size: 18px;
+      line-height: 1;
+    }
+    #status { color: var(--muted); font-size: 12px; }
+    #status.err { color: var(--danger); }
+    .empty { color: var(--muted); padding: 24px; text-align: center; }
+    .thinking {
+      align-self: flex-start; margin-right: auto;
+      max-width: min(85%, 640px); padding: 8px 12px;
+      border-radius: 14px; border-bottom-left-radius: 4px;
+      border: 1px dashed var(--border); background: transparent;
+      color: var(--muted); font-size: 13px;
+    }
+    .thinking .dots::after {
+      content: '';
+      animation: dots 1.2s steps(4, end) infinite;
+    }
+    @keyframes dots {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+    }
+    /* Pocket-style collapsible thinking + tools */
+    .msg .fold {
+      margin: 6px 0 4px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(0,0,0,.22);
+      overflow: hidden;
+    }
+    .msg .fold > summary {
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+      padding: 7px 10px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .msg .fold > summary::-webkit-details-marker { display: none; }
+    .msg .fold > summary::before {
+      content: '▸';
+      display: inline-block;
+      width: 1em;
+      color: var(--muted);
+      transition: transform .12s ease;
+    }
+    .msg .fold[open] > summary::before { transform: rotate(90deg); }
+    .msg .fold .fold-body {
+      padding: 0 10px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 280px;
+      overflow: auto;
+      border-top: 1px solid var(--border);
+      margin-top: 0;
+      padding-top: 8px;
+    }
+    .msg .fold.thinking-fold > summary { color: #b8c0cc; }
+    .msg .fold.tool-fold > summary { color: #9dcea6; }
+    .msg .fold.tool-fold.error > summary { color: #f0a0a0; }
+    .msg .body { white-space: pre-wrap; word-break: break-word; }
+    .msg .body:empty { display: none; }
+    dialog {
+      border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+      color: var(--text); padding: 16px; width: min(420px, 92vw);
+    }
+    dialog::backdrop { background: rgba(0,0,0,.55); }
+    dialog label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    dialog input {
+      width: 100%; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    }
+    dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    @media (max-width: 720px) {
+      #app.list-mode main { display: none; }
+      #app.chat-mode aside { display: none; }
+      aside { width: 100%; }
+      .msg { max-width: 88%; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="list-mode">
+    <aside>
+      <header>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v11</span></h1>
+        <button type="button" id="btnSettings" title="Server">⚙️</button>
+        <button type="button" id="btnRefreshList">Refresh</button>
+      </header>
+      <input class="search" id="search" placeholder="Search sessions" />
+      <div id="sessions"><div class="empty">Connect to your Mac serve…</div></div>
+    </aside>
+    <main>
+      <header>
+        <button type="button" id="btnBack" class="btn" style="display:none">←</button>
+        <h1 id="chatTitle">Pick a session</h1>
+        <button type="button" id="btnSync">Sync</button>
+        <span id="status"></span>
+      </header>
+      <div id="transcript"><div class="empty">Latest messages only (not full history).</div></div>
+      <div class="composer-wrap">
+        <div id="attachBar"></div>
+        <div class="composer">
+          <input type="file" id="filePick" accept="image/*,application/pdf,text/*,.md,.txt,.json,.csv,.py,.js,.ts,.tsx,.jsx" multiple hidden />
+          <button type="button" class="icon" id="btnAttach" title="Attach photo or file" disabled>📎</button>
+          <textarea id="prompt" placeholder="Message" disabled></textarea>
+          <button type="button" class="send" id="btnSend" disabled title="Send" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="settings">
+    <form method="dialog" id="settingsForm">
+      <h2 style="margin:0 0 4px;font-size:16px">Connect</h2>
+      <p style="margin:0;color:var(--muted);font-size:12px">Leave base empty when using serve.py (recommended).</p>
+      <label>API base (optional)</label>
+      <input id="baseUrl" placeholder="http://<mac-ip>:4096" />
+      <label>Username</label>
+      <input id="user" placeholder="opencode" autocomplete="username" />
+      <label>Password</label>
+      <input id="pass" type="password" placeholder="password" autocomplete="current-password" />
+      <div class="row">
+        <button type="submit" value="cancel">Cancel</button>
+        <button type="submit" class="primary" value="ok">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const BUILD = 'v11';
+    const MSG_LIMIT = 40;
+    const MAX_IMAGE_EDGE = 1600;
+    const JPEG_QUALITY = 0.85;
+    const MAX_FILE_BYTES = 12 * 1024 * 1024;
+    const $ = (id) => document.getElementById(id);
+    const state = { sessions: [], activeId: null, loading: false, pendingFiles: [], fingerprint: '', thinking: false };
+
+    function cfg() {
+      return {
+        base: localStorage.getItem('oc_base') || '',
+        user: localStorage.getItem('oc_user') || 'opencode',
+        pass: localStorage.getItem('oc_pass') || '',
+      };
+    }
+    function saveCfg(c) {
+      localStorage.setItem('oc_base', c.base || '');
+      localStorage.setItem('oc_user', c.user || 'opencode');
+      localStorage.setItem('oc_pass', c.pass || '');
+    }
+    function authHeader() {
+      const c = cfg();
+      return 'Basic ' + btoa(unescape(encodeURIComponent(c.user + ':' + c.pass)));
+    }
+    function apiUrl(path) {
+      const base = (cfg().base || '').replace(/\/$/, '');
+      if (!base) return path.startsWith('/') ? path : '/' + path;
+      return base + (path.startsWith('/') ? path : '/' + path);
+    }
+    function setStatus(msg, err) {
+      const el = $('status');
+      el.textContent = msg || '';
+      el.className = err ? 'err' : '';
+    }
+    function when(ts) {
+      if (!ts) return '';
+      const d = new Date(typeof ts === 'number' ? ts : Date.parse(ts));
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleString();
+    }
+    function stampOf(m) {
+      const t = (m && ((m.time && (m.time.created || m.time)) ||
+        (m.info && m.info.time && (m.info.time.created || m.info.time)))) || 0;
+      const n = typeof t === 'number' ? (t < 1e12 ? t * 1000 : t) : Date.parse(t);
+      if (!n || Number.isNaN(n)) return '';
+      const d = new Date(n);
+      const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      const sameDay = d.toDateString() === new Date().toDateString();
+      return sameDay ? hm : d.getDate() + ' ' + d.toLocaleString(undefined, { month: 'short' }) + ' ' + hm;
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
+    }
+    function stripHtml(s) {
+      if (!s || !/<[a-z][\s\S]*>/i.test(s)) return String(s || '');
+      const d = document.createElement('div');
+      d.innerHTML = s;
+      return (d.textContent || d.innerText || '').replace(/\u00a0/g, ' ');
+    }
+    function looksLikeJsonDump(s) {
+      const t = String(s || '').trim();
+      return (t.startsWith('{') || t.startsWith('[')) && t.length > 80 && /"(tokens|cost|finish|cache)"/.test(t);
+    }
+
+    /** Normalize V2 flat messages, top-level parts, and legacy {info,parts}. */
+    function normalizeMessage(m) {
+      if (!m || typeof m !== 'object') return { type: 'unknown', text: '', content: [], files: [], raw: m };
+
+      // Legacy / SDK shape: { info, parts }
+      if (m.info && (m.parts || m.info.role || m.info.type)) {
+        const info = m.info;
+        const type = String(info.role || info.type || 'message').toLowerCase();
+        const parts = Array.isArray(m.parts) ? m.parts : (info.parts || []);
+        return normalizeFromParts(type, parts, info, m);
+      }
+
+      // Flat message that still carries parts (no info wrapper)
+      if (Array.isArray(m.parts) && (m.type || m.role)) {
+        const type = String(m.type || m.role || 'message').toLowerCase();
+        return normalizeFromParts(type, m.parts, m, m);
+      }
+
+      // Flat V2 projected schema (type + text/content)
+      const type = String(m.type || m.role || 'message').toLowerCase();
+      const content = Array.isArray(m.content) ? m.content : [];
+      const files = Array.isArray(m.files) ? m.files : [];
+      let text = typeof m.text === 'string' ? stripHtml(m.text) : '';
+      // Some projections put user text only in content[]
+      if (!text && type === 'user' && content.length) {
+        text = content.map((c) => {
+          if (typeof c === 'string') return stripHtml(c);
+          if (c && typeof c.text === 'string') return stripHtml(c.text);
+          return '';
+        }).filter(Boolean).join('\n\n');
+      }
+      return {
+        type,
+        text,
+        content,
+        files,
+        reasoning: '',
+        tokens: m.tokens,
+        cost: m.cost,
+        finish: m.finish,
+        command: m.command,
+        output: m.output,
+        name: m.name,
+        description: m.description,
+        summary: m.summary,
+        raw: m,
+      };
+    }
+
+    function normalizeFromParts(type, parts, info, raw) {
+      if (type === 'user') {
+        const texts = [];
+        const files = [];
+        for (const p of parts) {
+          if (!p) continue;
+          if (p.type === 'text' && p.text && !p.ignored) texts.push(stripHtml(p.text));
+          else if (p.type === 'file') files.push(p);
+          else if (typeof p.text === 'string' && p.text.trim() && p.type !== 'reasoning' && p.type !== 'thinking') texts.push(stripHtml(p.text));
+        }
+        if (!texts.length && typeof info.text === 'string') texts.push(stripHtml(info.text));
+        return { type: 'user', text: texts.join('\n\n'), content: [], files, reasoning: '', raw };
+      }
+      const content = [];
+      const texts = [];
+      const reasonBits = [];
+      for (const p of parts) {
+        if (!p || typeof p !== 'object') continue;
+        const t = String(p.type || '').toLowerCase();
+        if (t === 'text' && p.text != null && !p.ignored) {
+          const s = stripHtml(String(p.text));
+          if (s.trim()) {
+            content.push({ type: 'text', text: s });
+            texts.push(s);
+          }
+        } else if (t === 'reasoning' || t === 'thinking') {
+          if (typeof p.text === 'string' && p.text.trim()) reasonBits.push(stripHtml(p.text.trim()));
+        } else if (t === 'tool' || t === 'tool-invocation' || t === 'tool-call' || t === 'tool-result') {
+          content.push({
+            type: 'tool',
+            name: p.tool || p.name || (p.toolInvocation && p.toolInvocation.toolName) || 'tool',
+            state: p.state || (p.toolInvocation && { status: p.toolInvocation.state, input: p.toolInvocation.args }) || {},
+          });
+        } else if (t === 'step-start' || t === 'step-finish' || t === 'stepstart' || t === 'stepfinish') {
+          continue;
+        } else if (t === 'file') {
+          content.push({ type: 'file', name: p.filename || p.name || 'file', mime: p.mime });
+        } else if (typeof p.text === 'string' && p.text.trim() && !looksLikeJsonDump(p.text)) {
+          const s = stripHtml(p.text);
+          content.push({ type: 'text', text: s });
+          texts.push(s);
+        }
+      }
+      let text = texts.join('\n\n').trim();
+      if (!text && typeof info.text === 'string') text = stripHtml(info.text);
+      return {
+        type: type === 'assistant' ? 'assistant' : type,
+        text,
+        content,
+        files: [],
+        reasoning: reasonBits.join('\n\n'),
+        tokens: info.tokens,
+        cost: info.cost,
+        finish: info.finish,
+        raw,
+      };
+    }
+
+    function shouldShow(m) {
+      const n = normalizeMessage(m);
+      if (!['user', 'assistant', 'system', 'synthetic', 'shell', 'skill'].includes(n.type)) return false;
+      if (n.type === 'assistant') {
+        const body = textFromNormalized(n);
+        const tools = extractTools(n);
+        const reason = extractReasoning(n);
+        if (!body && !tools.length && !reason) return false;
+      }
+      return true;
+    }
+
+    function toolLine(part) {
+      const name = part.name || part.tool || 'tool';
+      const st = part.state || {};
+      let status = st.status || '';
+      let detail = '';
+      let input = '';
+      if (st.input != null) {
+        try {
+          input = typeof st.input === 'string' ? st.input : JSON.stringify(st.input, null, 0);
+          if (input.length > 500) input = input.slice(0, 500) + '…';
+        } catch { input = ''; }
+      }
+      if (status === 'completed' && Array.isArray(st.content)) {
+        detail = st.content.map((c) => (c && c.type === 'text' ? c.text : '')).filter(Boolean).join('\n');
+        if (detail.length > 1200) detail = detail.slice(0, 1200) + '…';
+      } else if (status === 'completed' && typeof st.output === 'string') {
+        detail = st.output.length > 1200 ? st.output.slice(0, 1200) + '…' : st.output;
+      } else if (status === 'error' && st.error) {
+        detail = typeof st.error === 'string' ? st.error : (st.error.message || JSON.stringify(st.error));
+      }
+      if (!detail && input) detail = input;
+      else if (detail && input && !detail.includes(input.slice(0, 40))) detail = input + '\n' + detail;
+      return { name, status, detail, input };
+    }
+
+    function foldBlock(kind, label, body, open) {
+      const cls = kind === 'thinking' ? 'fold thinking-fold' : ('fold tool-fold' + (kind === 'tool-error' ? ' error' : ''));
+      return '<details class="' + cls + '"' + (open ? ' open' : '') + '>' +
+        '<summary>' + escapeHtml(label) + '</summary>' +
+        '<div class="fold-body">' + escapeHtml(body || '') + '</div></details>';
+    }
+
+    function partText(part) {
+      if (part == null) return '';
+      if (typeof part === 'string') return part.trim();
+      if (typeof part !== 'object') return '';
+      const t = String(part.type || part._tag || '').toLowerCase();
+      if (t === 'reasoning' || t === 'thinking' || t === 'step-start' || t === 'step-finish' || t === 'stepstart' || t === 'stepfinish') {
+        return '';
+      }
+      if (typeof part.text === 'string' && part.text.trim() && !part.ignored) {
+        if (looksLikeJsonDump(part.text)) return '';
+        return part.text.trim();
+      }
+      // Some payloads nest text under output / content
+      if (typeof part.output === 'string' && part.output.trim()) return part.output.trim();
+      if (Array.isArray(part.content)) {
+        return part.content.map(partText).filter(Boolean).join('\n\n').trim();
+      }
+      return '';
+    }
+
+    function collectTexts(parts) {
+      if (!parts) return [];
+      if (typeof parts === 'string') return parts.trim() ? [parts.trim()] : [];
+      if (!Array.isArray(parts)) return [];
+      const out = [];
+      for (const p of parts) {
+        const s = partText(p);
+        if (s) out.push(stripHtml(s));
+      }
+      return out;
+    }
+
+    function extractReasoning(n) {
+      if (!n) return '';
+      if (n.reasoning && String(n.reasoning).trim()) return String(n.reasoning).trim();
+      const bits = [];
+      const raw = n.raw;
+      const pools = [n.content, raw && raw.content, raw && raw.parts, raw && raw.info && raw.info.parts].filter(Array.isArray);
+      const seen = new Set();
+      for (const pool of pools) {
+        for (const p of pool) {
+          if (!p || typeof p !== 'object') continue;
+          const t = String(p.type || p._tag || '').toLowerCase();
+          if ((t === 'reasoning' || t === 'thinking') && typeof p.text === 'string' && p.text.trim()) {
+            const s = stripHtml(p.text.trim());
+            if (s && !seen.has(s)) { seen.add(s); bits.push(s); }
+          }
+        }
+      }
+      return bits.join('\n\n');
+    }
+
+    function extractTools(n) {
+      const tools = [];
+      const seen = new Set();
+      const push = (part) => {
+        if (!part || typeof part !== 'object') return;
+        const t = String(part.type || part._tag || '').toLowerCase();
+        if (!(t === 'tool' || t === 'tool-invocation' || t === 'tool-call' || t === 'tool-result')) return;
+        const name = part.tool || part.name || (part.toolInvocation && part.toolInvocation.toolName) || 'tool';
+        const state = part.state || (part.toolInvocation && { status: part.toolInvocation.state, input: part.toolInvocation.args }) || {};
+        const key = name + '|' + (state.status || '') + '|' + JSON.stringify(state.input || state.output || '').slice(0, 80);
+        if (seen.has(key)) return;
+        seen.add(key);
+        tools.push({ type: 'tool', name, state });
+      };
+      const raw = n && n.raw;
+      const pools = [n && n.content, raw && raw.content, raw && raw.parts, raw && raw.info && raw.info.parts].filter(Array.isArray);
+      for (const pool of pools) for (const p of pool) push(p);
+      return tools;
+    }
+
+    function textFromNormalized(n) {
+      if (!n) return '';
+      if (n.type === 'user') {
+        if (n.text && String(n.text).trim()) return String(n.text).trim();
+        return (n.files && n.files.length) ? '(attachment)' : '';
+      }
+      if (n.type === 'assistant') {
+        // Outcome only — never dump reasoning into the visible body
+        const bits = [];
+        if (n.text && String(n.text).trim() && !looksLikeJsonDump(n.text)) {
+          bits.push(stripHtml(n.text));
+        }
+        bits.push(...collectTexts(n.content));
+        const raw = n.raw;
+        if (raw && typeof raw === 'object') {
+          if (Array.isArray(raw.content)) bits.push(...collectTexts(raw.content));
+          if (Array.isArray(raw.parts)) bits.push(...collectTexts(raw.parts));
+          if (raw.info && Array.isArray(raw.info.parts)) bits.push(...collectTexts(raw.info.parts));
+          if (raw.error) {
+            const err = raw.error;
+            const msg = (err && (err.message || (err.data && err.data.message))) || (typeof err === 'string' ? err : '');
+            if (msg) bits.push(stripHtml(String(msg)));
+          }
+        }
+        const seen = new Set();
+        const out = [];
+        for (const b of bits) {
+          const k = String(b).trim();
+          if (!k || seen.has(k)) continue;
+          seen.add(k);
+          out.push(k);
+        }
+        return out.join('\n\n');
+      }
+      if (n.type === 'system' || n.type === 'synthetic' || n.type === 'skill') {
+        return n.description || n.text || n.summary || '';
+      }
+      if (n.type === 'shell') {
+        const out = (n.output && (n.output.output || n.output)) || '';
+        return ((n.command || '') + (out ? '\n' + String(out).slice(0, 800) : '')).trim();
+      }
+      return (n.text || '').trim();
+    }
+
+    function messageKey(m, idx) {
+      const id = messageId(m);
+      if (id) return id;
+      const n = normalizeMessage(m);
+      return 'i' + idx + ':' + n.type + ':' + textFromNormalized(n).slice(0, 40);
+    }
+
+    function buildMessageNode(m, key) {
+      const n = normalizeMessage(m);
+      const role = n.type;
+      const extras = [];
+
+      if (role === 'assistant') {
+        // thinking intentionally not rendered in this UI
+        for (const part of extractTools(n)) {
+          const t = toolLine(part);
+          const ok = t.status === 'completed' || t.status === 'success' || t.status === 'done';
+          const bad = t.status === 'error' || t.status === 'failed';
+          const mark = bad ? '✗' : (ok ? '✓' : '·');
+          const label = mark + ' ' + t.name + (t.status && !ok && !bad ? ' · ' + t.status : '');
+          extras.push(foldBlock(bad ? 'tool-error' : 'tool', label, t.detail || '(no output)', false));
+        }
+      }
+
+      if (role === 'shell') {
+        const out = (n.output && (n.output.output || n.output)) || '';
+        const detail = ((n.command || '') + (out ? '\n' + String(out) : '')).trim();
+        extras.push(foldBlock('tool', '✓ shell', detail.slice(0, 2000) || '(no output)', false));
+      }
+
+      if (role === 'user' && n.files && n.files.length) {
+        for (const f of n.files) {
+          const name = f.name || f.filename || f.mime || 'attachment';
+          extras.push('<div class="attach">📎 ' + escapeHtml(name) + '</div>');
+        }
+      }
+
+      let bodyText = textFromNormalized(n);
+      // shell body is in the fold — don't duplicate
+      if (role === 'shell') bodyText = '';
+      const body = escapeHtml(bodyText);
+
+      const div = document.createElement('div');
+      div.className = 'msg ' + role;
+      div.dataset.key = key;
+      // Pocket-like: folds first (thinking/tools), then outcome text
+      const roleLabel = role === 'user' ? 'you' : (role === 'assistant' ? 'assistant' : role);
+      const stamp = stampOf(m);
+      div.innerHTML = '<div class="role">' + escapeHtml(roleLabel) +
+        (stamp ? '<span class="ts"> · ' + escapeHtml(stamp) + '</span>' : '') + '</div>' +
+        extras.join('') +
+        '<div class="body">' + body + '</div>';
+      return div;
+    }
+
+    function renderMessageHtml(m) {
+      // kept for fingerprint only; paint uses buildMessageNode
+      const n = normalizeMessage(m);
+      return n.type + '|' + textFromNormalized(n) + '|' +
+        (n.content || []).filter((p) => p && p.type === 'tool').map((p) => p.name || '').join(',');
+    }
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ Accept: 'application/json' }, opts.headers || {});
+      headers.Authorization = authHeader();
+      if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+      const res = await fetch(apiUrl(path), { ...opts, headers, signal: opts.signal });
+      const raw = await res.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
+      if (!res.ok) {
+        const msg = (data && (data.message || data._tag || data.error)) || raw || res.statusText;
+        throw new Error(res.status + ': ' + (typeof msg === 'string' ? msg : JSON.stringify(msg)));
+      }
+      return data;
+    }
+
+    function shortPath(p) {
+      const parts = String(p).split('/').filter(Boolean);
+      return parts.slice(-2).join('/') || p;
+    }
+
+    function renderSessions(filter = '') {
+      const q = filter.trim().toLowerCase();
+      const list = state.sessions.filter((s) => {
+        if (!q) return true;
+        const title = (s.title || '').toLowerCase();
+        const id = (s.id || '').toLowerCase();
+        const dir = (s.location && s.location.directory) || s.directory || '';
+        return title.includes(q) || id.includes(q) || String(dir).toLowerCase().includes(q);
+      });
+      const root = $('sessions');
+      if (!list.length) {
+        root.innerHTML = '<div class="empty">No sessions</div>';
+        return;
+      }
+      root.innerHTML = list.map((s) => {
+        const dir = (s.location && s.location.directory) || s.directory || '';
+        const updated = when((s.time && s.time.updated) || s.updated);
+        const active = s.id === state.activeId ? ' active' : '';
+        return '<div class="session' + active + '" data-id="' + escapeHtml(s.id) + '">' +
+          '<div class="title">' + escapeHtml(s.title || s.id) + '</div>' +
+          '<div class="meta">' + escapeHtml(updated) + (dir ? ' · ' + escapeHtml(shortPath(dir)) : '') + '</div></div>';
+      }).join('');
+      root.querySelectorAll('.session').forEach((el) => {
+        el.onclick = () => openSession(el.dataset.id);
+      });
+    }
+
+    async function loadSessions() {
+      setStatus('Loading… (' + BUILD + ')');
+      try {
+        const data = await api('/api/session?limit=100&order=desc');
+        state.sessions = data.data || data.sessions || (Array.isArray(data) ? data : []);
+        renderSessions($('search').value);
+        setStatus(state.sessions.length + ' sessions · ' + BUILD);
+      } catch (e) {
+        setStatus(e.message, true);
+        $('sessions').innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
+      }
+    }
+
+    function messageId(m) {
+      if (!m || typeof m !== 'object') return '';
+      if (m.id) return String(m.id);
+      if (m.info && m.info.id) return String(m.info.id);
+      return '';
+    }
+
+    function fingerprintMsgs(msgs) {
+      return msgs.map((m, i) => {
+        const n = normalizeMessage(m);
+        const id = messageId(m) || ('i' + i);
+        const body = textFromNormalized(n);
+        const tools = extractTools(n).map((p) => (p.name || '') + ':' + ((p.state && p.state.status) || '')).join(',');
+        const reason = extractReasoning(n);
+        const files = (n.files || []).map((f) => f.name || f.mime || '').join(',');
+        return id + '|' + n.type + '|' + body.length + ':' + body.slice(0, 120) + '|r' + reason.length + '|' + tools + '|' + files;
+      }).join('\n');
+    }
+
+    function nearBottom(el) {
+      return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    }
+
+    function setThinking(on) {
+      state.thinking = !!on;
+      const el = $('transcript');
+      let tip = el.querySelector('.thinking');
+      if (!on) {
+        if (tip) tip.remove();
+        return;
+      }
+      if (!tip) {
+        tip = document.createElement('div');
+        tip.className = 'thinking';
+        tip.innerHTML = 'Thinking<span class="dots"></span>';
+        el.appendChild(tip);
+      } else {
+        // keep tip at the end
+        el.appendChild(tip);
+      }
+      if (nearBottom(el)) el.scrollTop = el.scrollHeight;
+    }
+
+    /** Diff-update transcript by message key — no full-screen wipe. */
+    function paintMessages(msgs, { forceScroll } = {}) {
+      const el = $('transcript');
+      const stick = forceScroll || nearBottom(el);
+      const fp = fingerprintMsgs(msgs);
+      if (fp === state.fingerprint && el.querySelector('.msg, .thinking, .empty')) {
+        if (state.thinking) setThinking(true);
+        return false;
+      }
+      state.fingerprint = fp;
+
+      const empty = el.querySelector('.empty');
+      if (empty) empty.remove();
+      el.querySelectorAll('.msg[data-optimistic]').forEach((n) => n.remove());
+
+      if (!msgs.length) {
+        el.querySelectorAll('.msg').forEach((n) => n.remove());
+        if (!state.thinking && !el.querySelector('.thinking')) {
+          const d = document.createElement('div');
+          d.className = 'empty';
+          d.textContent = 'No recent user/assistant messages';
+          el.appendChild(d);
+        }
+        if (state.thinking) setThinking(true);
+        return true;
+      }
+
+      const tip = el.querySelector('.thinking');
+      const byKey = new Map();
+      el.querySelectorAll('.msg[data-key]').forEach((node) => byKey.set(node.dataset.key, node));
+      const used = new Set();
+      const ordered = [];
+
+      for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i];
+        const key = messageKey(m, i);
+        used.add(key);
+        let node = byKey.get(key);
+        const fresh = buildMessageNode(m, key);
+        if (node) {
+          if (node.innerHTML !== fresh.innerHTML || node.className !== fresh.className) {
+            node.className = fresh.className;
+            node.innerHTML = fresh.innerHTML;
+          }
+        } else {
+          node = fresh;
+        }
+        ordered.push(node);
+      }
+
+      byKey.forEach((node, key) => {
+        if (!used.has(key)) node.remove();
+      });
+
+      // Re-append in order without clearing the whole parent first
+      for (const node of ordered) {
+        if (tip && tip.parentNode === el) el.insertBefore(node, tip);
+        else el.appendChild(node);
+      }
+      if (state.thinking) setThinking(true);
+      else if (tip) tip.remove();
+
+      if (stick) el.scrollTop = el.scrollHeight;
+      return true;
+    }
+
+    function appendOptimisticUser(text, files) {
+      const el = $('transcript');
+      const empty = el.querySelector('.empty');
+      if (empty) empty.remove();
+      const bits = ['<div class="body">' + escapeHtml(text || '') + '</div>'];
+      for (const f of files || []) {
+        bits.push('<div class="attach">📎 ' + escapeHtml(f.name || 'file') + '</div>');
+      }
+      const div = document.createElement('div');
+      div.className = 'msg user';
+      div.dataset.optimistic = '1';
+      const now = new Date();
+      const hm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      div.innerHTML = '<div class="role">you<span class="ts"> · ' + escapeHtml(hm) + '</span></div>' + bits.join('');
+      const tip = el.querySelector('.thinking');
+      if (tip) el.insertBefore(div, tip);
+      else el.appendChild(div);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    async function fetchRecentMessages(sessionId) {
+      const data = await api(
+        '/api/session/' + encodeURIComponent(sessionId) +
+        '/message?limit=' + MSG_LIMIT + '&order=desc'
+      );
+      let batch = [];
+      if (Array.isArray(data)) batch = data;
+      else if (data && Array.isArray(data.data)) batch = data.data;
+      else if (data && Array.isArray(data.messages)) batch = data.messages;
+      else if (data && data.data && Array.isArray(data.data.data)) batch = data.data.data;
+      // Newest-first pages need reversing; ascending pages do not
+      const first = batch[0];
+      const last = batch[batch.length - 1];
+      const tFirst = first && (first.time && (first.time.created || first.time)) || (first && first.info && first.info.time && first.info.time.created);
+      const tLast = last && (last.time && (last.time.created || last.time)) || (last && last.info && last.info.time && last.info.time.created);
+      let ordered = batch.slice();
+      if (typeof tFirst === 'number' && typeof tLast === 'number' && tFirst > tLast) {
+        ordered = ordered.reverse();
+      } else if (!tFirst && !tLast) {
+        // API called with order=desc — assume newest-first
+        ordered = ordered.reverse();
+      }
+      // Remember last assistant raw shape for troubleshooting (shown in status on empty)
+      const lastAsst = [...ordered].reverse().find((m) => {
+        const n = normalizeMessage(m);
+        return n.type === 'assistant';
+      });
+      if (lastAsst) {
+        const n = normalizeMessage(lastAsst);
+        const body = textFromNormalized(n);
+        if (!body) {
+          const raw = lastAsst;
+          const keys = raw && typeof raw === 'object' ? Object.keys(raw).slice(0, 12).join(',') : '';
+          const ctypes = Array.isArray(raw.content)
+            ? raw.content.map((c) => (c && (c.type || c._tag)) || typeof c).join('|')
+            : (Array.isArray(raw.parts) ? ('parts:' + raw.parts.map((c) => c && c.type).join('|')) : 'no-content');
+          state._emptyHint = 'empty asst · keys=' + keys + ' · ' + ctypes;
+        } else {
+          state._emptyHint = '';
+        }
+      }
+      return ordered.filter(shouldShow);
+    }
+
+    async function openSession(id) {
+      state.activeId = id;
+      state.fingerprint = '';
+      state.thinking = false;
+      const s = state.sessions.find((x) => x.id === id);
+      $('chatTitle').textContent = (s && s.title) || id;
+      $('prompt').disabled = false;
+      $('btnSend').disabled = false;
+      $('btnAttach').disabled = false;
+      document.getElementById('app').classList.remove('list-mode');
+      document.getElementById('app').classList.add('chat-mode');
+      if (window.matchMedia('(max-width: 720px)').matches) $('btnBack').style.display = '';
+      renderSessions($('search').value);
+      await syncHistory({ initial: true });
+    }
+
+    async function syncHistory(opts = {}) {
+      if (!state.activeId) return null;
+      if (state.loading && !opts.force) return null;
+      state.loading = true;
+      const initial = !!opts.initial;
+      const quiet = !!opts.quiet;
+      if (!quiet && !state.thinking) setStatus(initial ? 'Loading…' : 'Syncing…');
+      try {
+        const msgs = await fetchRecentMessages(state.activeId);
+        paintMessages(msgs, { forceScroll: initial || !!opts.forceScroll });
+        if (!quiet && !state.thinking) {
+          const hint = state._emptyHint ? (' · ' + state._emptyHint) : '';
+          setStatus('Synced · last ' + msgs.length + ' · ' + BUILD + hint);
+        }
+        return msgs;
+      } catch (e) {
+        if (!state.fingerprint) {
+          $('transcript').innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
+        }
+        if (!quiet) setStatus(e.message, true);
+        return null;
+      } finally {
+        state.loading = false;
+      }
+    }
+
+    function renderAttachBar() {
+      const bar = $('attachBar');
+      if (!state.pendingFiles.length) {
+        bar.classList.remove('show');
+        bar.innerHTML = '';
+        return;
+      }
+      bar.classList.add('show');
+      bar.innerHTML = state.pendingFiles.map((f, i) => {
+        const thumb = f.preview
+          ? '<img src="' + f.preview + '" alt="" />'
+          : '<span>📄</span>';
+        return '<span class="chip" data-i="' + i + '">' + thumb +
+          '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">' +
+          escapeHtml(f.name) + '</span>' +
+          '<button type="button" data-rm="' + i + '" title="Remove">×</button></span>';
+      }).join('');
+      bar.querySelectorAll('[data-rm]').forEach((btn) => {
+        btn.onclick = () => {
+          const i = Number(btn.getAttribute('data-rm'));
+          state.pendingFiles.splice(i, 1);
+          renderAttachBar();
+        };
+      });
+    }
+
+    function readAsDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(r.error || new Error('read failed'));
+        r.readAsDataURL(file);
+      });
+    }
+
+    function loadImage(url) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('image load failed'));
+        img.src = url;
+      });
+    }
+
+    async function compressImage(file) {
+      const url = await readAsDataURL(file);
+      const img = await loadImage(url);
+      let w = img.naturalWidth || img.width;
+      let h = img.naturalHeight || img.height;
+      const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(w, h));
+      w = Math.max(1, Math.round(w * scale));
+      h = Math.max(1, Math.round(h * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const mime = 'image/jpeg';
+      const dataUrl = canvas.toDataURL(mime, JPEG_QUALITY);
+      const base64 = dataUrl.split(',')[1] || '';
+      return {
+        name: (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg',
+        mime,
+        data: base64,
+        preview: dataUrl,
+        bytes: Math.ceil(base64.length * 0.75),
+      };
+    }
+
+    async function fileToAttachment(file) {
+      if (file.size > MAX_FILE_BYTES) {
+        throw new Error(file.name + ' is larger than 12 MB');
+      }
+      if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+        return compressImage(file);
+      }
+      const dataUrl = await readAsDataURL(file);
+      const base64 = String(dataUrl).split(',')[1] || '';
+      return {
+        name: file.name || 'file',
+        mime: file.type || 'application/octet-stream',
+        data: base64,
+        preview: null,
+        bytes: file.size,
+      };
+    }
+
+    async function onFilesPicked(fileList) {
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+      setStatus('Preparing ' + files.length + ' file(s)…');
+      try {
+        for (const file of files) {
+          const att = await fileToAttachment(file);
+          state.pendingFiles.push(att);
+        }
+        renderAttachBar();
+        setStatus(state.pendingFiles.length + ' attached · ' + BUILD);
+      } catch (e) {
+        setStatus(e.message, true);
+      }
+      $('filePick').value = '';
+    }
+
+    async function waitForIdle(sessionId, timeoutMs) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs || 90000);
+      try {
+        await api('/api/experimental/session/' + encodeURIComponent(sessionId) + '/wait', {
+          method: 'POST',
+          body: '{}',
+          signal: ctrl.signal,
+        });
+        return true;
+      } catch (e) {
+        // Endpoint may be missing/unavailable — fall back to polling
+        return false;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function sendMessage() {
+      const text = $('prompt').value.trim();
+      const files = state.pendingFiles.slice();
+      if ((!text && !files.length) || !state.activeId) return;
+      $('btnSend').disabled = true;
+      $('btnAttach').disabled = true;
+      const displayText = text || (files.length ? '(see attached)' : '');
+      appendOptimisticUser(displayText, files);
+      setThinking(true);
+      setStatus('Thinking… · ' + BUILD);
+      $('prompt').value = '';
+      state.pendingFiles = [];
+      renderAttachBar();
+      try {
+        const body = { text: displayText };
+        if (files.length) {
+          body.files = files.map((f) => ({
+            data: f.data,
+            mime: f.mime,
+            source: { type: 'inline' },
+            name: f.name,
+          }));
+        }
+        await api('/api/session/' + encodeURIComponent(state.activeId) + '/prompt', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+
+        // Prefer server-side wait — no mid-flight transcript rewrites
+        const waited = await waitForIdle(state.activeId, 120000);
+        if (waited) {
+          setThinking(false);
+          await syncHistory({ quiet: true, force: true, forceScroll: true });
+          setStatus('Synced · ' + BUILD);
+        } else {
+          // Fallback: poll quietly WITHOUT painting — keep old bubbles + Thinking tip
+          let ready = null;
+          for (let i = 0; i < 45; i++) {
+            await new Promise((r) => setTimeout(r, 800));
+            try {
+              const msgs = await fetchRecentMessages(state.activeId);
+              const last = msgs[msgs.length - 1];
+              const n = last ? normalizeMessage(last) : null;
+              const body = n ? textFromNormalized(n) : '';
+              const hasTool = n && (n.content || []).some((p) => p && p.type === 'tool' && p.state && p.state.status === 'completed');
+              if (n && n.type === 'assistant' && (body || hasTool)) {
+                ready = msgs;
+                break;
+              }
+            } catch (_) { /* keep waiting */ }
+          }
+          setThinking(false);
+          state.fingerprint = ''; // force one paint
+          if (ready) paintMessages(ready, { forceScroll: true });
+          else await syncHistory({ quiet: true, force: true, forceScroll: true });
+          setStatus('Synced · ' + BUILD);
+        }
+      } catch (e) {
+        setThinking(false);
+        setStatus(e.message, true);
+      } finally {
+        $('btnSend').disabled = false;
+        $('btnAttach').disabled = false;
+      }
+    }
+
+    $('btnRefreshList').onclick = loadSessions;
+    $('btnSync').onclick = syncHistory;
+    $('btnSend').onclick = sendMessage;
+    $('btnAttach').onclick = () => $('filePick').click();
+    $('filePick').onchange = (e) => onFilesPicked(e.target.files);
+    $('btnSettings').onclick = () => {
+      const c = cfg();
+      $('baseUrl').value = c.base;
+      $('user').value = c.user;
+      $('pass').value = c.pass;
+      $('settings').showModal();
+    };
+    $('settingsForm').onsubmit = (ev) => {
+      if (ev.submitter && ev.submitter.value === 'ok') {
+        saveCfg({
+          base: $('baseUrl').value.trim(),
+          user: $('user').value.trim() || 'opencode',
+          pass: $('pass').value,
+        });
+        loadSessions();
+      }
+    };
+    $('search').oninput = () => renderSessions($('search').value);
+    $('btnBack').onclick = () => {
+      document.getElementById('app').classList.add('list-mode');
+      document.getElementById('app').classList.remove('chat-mode');
+      $('btnBack').style.display = 'none';
+    };
+    $('prompt').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    loadSessions();
+  </script>
+</body>
+</html>
