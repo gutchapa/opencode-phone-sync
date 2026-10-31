@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v16</title>
+  <title>OpenCode Sync v17</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -257,7 +257,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v16</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v17</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -306,7 +306,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v16';
+    const BUILD = 'v17';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -363,9 +363,10 @@
     }
     function stripHtml(s) {
       if (!s || !/<[a-z][\s\S]*>/i.test(s)) return String(s || '');
-      const d = document.createElement('div');
-      d.innerHTML = s;
-      return (d.textContent || d.innerText || '').replace(/\u00a0/g, ' ');
+      // Inert document: parsing never runs scripts or loads images
+      const d = new DOMParser().parseFromString(String(s), 'text/html');
+      const root = d.body || d.documentElement;
+      return String(root ? root.textContent : '').replace(/\u00a0/g, ' ');
     }
     function looksLikeJsonDump(s) {
       const t = String(s || '').trim();
@@ -823,7 +824,8 @@
       const attrs = ' data-form="' + escapeHtml(fid) + '" data-key="' + escapeHtml(f.key) + '"';
       if (f.type === 'external') {
         return '<div class="qfield">' + label + desc +
-          '<a class="qopt" href="' + escapeHtml(f.url || '#') + '" target="_blank" rel="noreferrer">Open</a></div>';
+          '<a class="qopt" href="' + escapeHtml(/^https?:\/\//i.test(String(f.url || '')) ? f.url : '#') +
+          '" target="_blank" rel="noopener noreferrer">Open</a></div>';
       }
       if (f.type === 'boolean') {
         const yes = value === true, no = value === false;

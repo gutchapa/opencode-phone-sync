@@ -7,7 +7,7 @@ Usage on the Mac (with opencode serve already on :4096):
   export OPENCODE_USERNAME='<your-username>'   # optional, default: opencode
   python3 serve.py                             # listens 0.0.0.0:8787
 
-Phone / browser: http://<mac-tailscale-or-lan-ip>:8787
+Phone / browser: https://<machine>.<tailnet>.ts.net
 """
 from __future__ import annotations
 
@@ -40,6 +40,9 @@ def basic_auth_header() -> str:
 
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    server_version = "opencode-phone-sync"
+    sys_version = ""
+    timeout = 30  # drop stalled clients instead of pinning a thread
     # Phone photos as base64 JSON can be several MB
     def __init__(self, *args, **kwargs):
         self.max_body = 32 * 1024 * 1024
@@ -97,17 +100,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+            "img-src data: blob:; connect-src 'self'; base-uri 'none'; "
+            "frame-ancestors 'none'",
+        )
         self.end_headers()
         self.wfile.write(body)
 
     def _proxy(self) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
+        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+            self.close_connection = True
+            self.send_error(403, "Cross-site request rejected")
+            return
+        if not self._authorized():
+            self.close_connection = True
+            return self._unauthorized()
+        raw_len = (self.headers.get("Content-Length") or "0").strip()
+        try:
+            length = int(raw_len)
+        except ValueError:
+            self.send_error(400, "Bad Content-Length")
+            return
+        if length < 0:
+            self.send_error(400, "Bad Content-Length")
+            return
         if length > 32 * 1024 * 1024:
             self.send_error(413, "Payload too large")
             return
         body = self.rfile.read(length) if length else None
-        if not self._authorized():
-            return self._unauthorized()
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if parsed.query:

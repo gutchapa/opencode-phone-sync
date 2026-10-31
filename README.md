@@ -112,12 +112,30 @@ Read this before exposing the port.
   without TLS the Basic-auth header is protected only by the underlying VPN.
 - Every `/api/*` and `/global/*` request must carry the Basic `Authorization`
   header matching `OPENCODE_USERNAME` / `OPENCODE_PASSWORD`. Anything else gets
-  `401` with a `WWW-Authenticate` challenge, compared in constant time. The static
-  `index.html` itself is served without auth, so the login form can load.
+  `401` with a `WWW-Authenticate` challenge, compared with
+  `hmac.compare_digest`. The static `index.html` is served without auth so the
+  login form can load.
+- Requests arriving with `Sec-Fetch-Site: cross-site` are rejected with `403`,
+  which blocks drive-by form posts from other sites. Command-line clients do not
+  send that header and are unaffected.
 - No CORS headers are sent. The UI is same-origin, and other origins cannot read
   proxied responses.
+- The static page is served with `Content-Security-Policy`
+  (`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+  img-src data: blob:; connect-src 'self'`), `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and no `Server`
+  version banner.
+- Message bodies are stripped of HTML through an inert `DOMParser` document, so
+  markup in model output cannot run scripts or trigger image loads.
+- Request bodies are capped at 32 MB, malformed `Content-Length` values get
+  `400`, and idle sockets time out after 30 s.
 - The API it proxies can run shell commands through the agent. Treat the port as
   equivalent to a shell on the host, and do not expose it to the public internet.
+
+Known limitations, by design: there is no rate limiting on the auth check, the
+browser keeps the password in `localStorage` so it is readable by any script that
+manages to run in the page, and a single shared Basic credential is used rather
+than per-user accounts.
 
 Put it behind something that terminates TLS and checks credentials: `tailscale
 serve`, Caddy, nginx, or an SSH tunnel. Do not expose it to the public internet.
