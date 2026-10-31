@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v15</title>
+  <title>OpenCode Sync v16</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -257,7 +257,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v15</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v16</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -306,7 +306,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v15';
+    const BUILD = 'v16';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -1298,8 +1298,7 @@
         const body = { text: displayText };
         if (files.length) {
           body.files = files.map((f) => ({
-            data: f.data,
-            mime: f.mime,
+            uri: 'data:' + (f.mime || 'application/octet-stream') + ';base64,' + f.data,
             source: { type: 'inline' },
             name: f.name,
           }));
