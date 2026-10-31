@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v14</title>
+  <title>OpenCode Sync v15</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -187,6 +187,9 @@
       75% { content: '...'; }
     }
     /* Pocket-style collapsible thinking + tools */
+    .msg.assistant {
+      width: 100%; max-width: 100%;
+    }
     .msg .fold {
       margin: 6px 0 4px;
       border: 1px solid var(--border);
@@ -254,7 +257,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v14</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v15</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -303,7 +306,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v14';
+    const BUILD = 'v15';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -508,8 +511,20 @@
       } else if (status === 'error' && st.error) {
         detail = typeof st.error === 'string' ? st.error : (st.error.message || JSON.stringify(st.error));
       }
-      if (!detail && input) detail = input;
-      else if (detail && input && !detail.includes(input.slice(0, 40))) detail = input + '\n' + detail;
+      const isShell = /^(shell|bash)$/i.test(String(name));
+      if (isShell) {
+        let cmd = '';
+        try {
+          const o = typeof st.input === 'string' ? JSON.parse(st.input) : st.input;
+          cmd = (o && (o.command || o.cmd)) || '';
+        } catch { cmd = ''; }
+        if (!cmd && typeof st.input === 'string') cmd = st.input;
+        detail = (cmd ? '$ ' + cmd : '') + (detail ? '\n\n' + detail : '');
+      } else if (!detail && input) {
+        detail = input;
+      } else if (detail && input && !detail.includes(input.slice(0, 40))) {
+        detail = input + '\n' + detail;
+      }
       return { name, status, detail, input };
     }
 
