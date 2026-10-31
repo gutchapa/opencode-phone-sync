@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v11</title>
+  <title>OpenCode Sync v12</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -129,6 +129,38 @@
     button.send:hover:not(:disabled) { background: #ff814a; border-color: #ff814a; }
     button.send:active:not(:disabled) { background: #e85a1a; border-color: #e85a1a; }
     button.send svg { width: 20px; height: 20px; display: block; }
+    button.stop {
+      width: 44px; height: 44px; min-width: 44px; padding: 0;
+      border-radius: 50%; flex-shrink: 0;
+      background: #1f6f4a; border-color: #2b8f61; color: #eafff4;
+      font-size: 16px; line-height: 1;
+    }
+    button.stop:hover:not(:disabled) { background: #268a5b; }
+    #forms { display: none; padding: 0 12px 8px; }
+    #forms.show { display: block; }
+    .qcard {
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--assistant); padding: 10px;
+      margin-bottom: 8px;
+    }
+    .qtitle { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+    .qfield { margin-bottom: 10px; }
+    .qlabel { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+    .qdesc { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .qopts { display: flex; flex-wrap: wrap; gap: 6px; }
+    .qopt {
+      border: 1px solid var(--border); background: #222833; color: var(--text);
+      border-radius: 14px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+    }
+    .qopt.sel { background: #2b4c7e; border-color: #3a62a0; }
+    .qinput {
+      width: 100%; box-sizing: border-box; margin-top: 6px;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); padding: 8px; font: inherit; font-size: 13px;
+    }
+    .qrow { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+    .qskip { background: transparent; border-color: transparent; color: var(--muted); }
+    .qsend { background: #2b4c7e; border-color: #3a62a0; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     button.icon {
       min-width: 44px; min-height: 44px; padding: 8px; font-size: 18px;
@@ -222,7 +254,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v11</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v12</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -237,12 +269,14 @@
         <span id="status"></span>
       </header>
       <div id="transcript"><div class="empty">Latest messages only (not full history).</div></div>
+      <div id="forms"></div>
       <div class="composer-wrap">
         <div id="attachBar"></div>
         <div class="composer">
           <input type="file" id="filePick" accept="image/*,application/pdf,text/*,.md,.txt,.json,.csv,.py,.js,.ts,.tsx,.jsx" multiple hidden />
           <button type="button" class="icon" id="btnAttach" title="Attach photo or file" disabled>📎</button>
           <textarea id="prompt" placeholder="Message" disabled></textarea>
+          <button type="button" class="stop" id="btnStop" hidden title="Stop" aria-label="Stop">■</button>
           <button type="button" class="send" id="btnSend" disabled title="Send" aria-label="Send">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
@@ -269,13 +303,13 @@
   </dialog>
 
   <script>
-    const BUILD = 'v11';
+    const BUILD = 'v12';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
     const MAX_FILE_BYTES = 12 * 1024 * 1024;
     const $ = (id) => document.getElementById(id);
-    const state = { sessions: [], activeId: null, loading: false, pendingFiles: [], fingerprint: '', thinking: false };
+    const state = { sessions: [], activeId: null, loading: false, pendingFiles: [], fingerprint: '', thinking: false, forms: [] };
 
     function cfg() {
       return {
@@ -622,7 +656,8 @@
           const bad = t.status === 'error' || t.status === 'failed';
           const mark = bad ? '✗' : (ok ? '✓' : '·');
           const label = mark + ' ' + t.name + (t.status && !ok && !bad ? ' · ' + t.status : '');
-          extras.push(foldBlock(bad ? 'tool-error' : 'tool', label, t.detail || '(no output)', false));
+          const openByDefault = String(t.name || '').toLowerCase() === 'question';
+          extras.push(foldBlock(bad ? 'tool-error' : 'tool', label, t.detail || '(no output)', openByDefault));
         }
       }
 
@@ -747,9 +782,177 @@
       return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     }
 
+    /* ---------- pending question forms (server "form" API) ---------- */
+    const formAnswer = {};
+
+    function fieldDefault(f) {
+      if (f.default !== undefined && f.default !== null) return f.default;
+      if (f.type === 'multiselect') return [];
+      if (f.type === 'boolean') return undefined;
+      return '';
+    }
+
+    function fieldValue(fid, f) {
+      const a = formAnswer[fid];
+      if (a && a[f.key] !== undefined) return a[f.key];
+      return fieldDefault(f);
+    }
+
+    function isBlank(v) {
+      return v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
+    }
+
+    function fieldHtml(fid, f, value) {
+      const label = f.title ? '<div class="qlabel">' + escapeHtml(f.title) + (f.required ? ' *' : '') + '</div>' : '';
+      const desc = f.description ? '<div class="qdesc">' + escapeHtml(f.description) + '</div>' : '';
+      const attrs = ' data-form="' + escapeHtml(fid) + '" data-key="' + escapeHtml(f.key) + '"';
+      if (f.type === 'external') {
+        return '<div class="qfield">' + label + desc +
+          '<a class="qopt" href="' + escapeHtml(f.url || '#') + '" target="_blank" rel="noreferrer">Open</a></div>';
+      }
+      if (f.type === 'boolean') {
+        const yes = value === true, no = value === false;
+        return '<div class="qfield">' + label + desc + '<div class="qopts">' +
+          '<button type="button" class="qopt' + (yes ? ' sel' : '') + '" data-act="bool" data-val="true"' + attrs + '>Yes</button>' +
+          '<button type="button" class="qopt' + (no ? ' sel' : '') + '" data-act="bool" data-val="false"' + attrs + '>No</button>' +
+          '</div></div>';
+      }
+      if (Array.isArray(f.options) && f.options.length) {
+        const multi = f.type === 'multiselect';
+        const picked = multi ? (Array.isArray(value) ? value : []) : [value];
+        let html = '<div class="qfield">' + label + desc + '<div class="qopts">' +
+          f.options.map((o) => {
+            const on = picked.some((p) => String(p) === String(o.value));
+            return '<button type="button" class="qopt' + (on ? ' sel' : '') + '" data-act="' +
+              (multi ? 'multi' : 'pick') + '" data-val="' + escapeHtml(String(o.value)) + '"' + attrs + '>' +
+              escapeHtml(o.label || o.value) + '</button>';
+          }).join('') + '</div>';
+        if (f.custom) {
+          html += '<input class="qinput" data-custom="1"' + attrs + ' placeholder="Other (free text)" value="' +
+            escapeHtml(multi ? '' : String(value || '')) + '" />';
+        }
+        return html + '</div>';
+      }
+      const t = (f.type === 'number' || f.type === 'integer') ? 'number' : 'text';
+      return '<div class="qfield">' + label + desc +
+        '<input class="qinput" type="' + t + '"' + attrs +
+        (f.placeholder ? ' placeholder="' + escapeHtml(f.placeholder) + '"' : '') +
+        ' value="' + escapeHtml(value === undefined ? '' : String(value)) + '" /></div>';
+    }
+
+    function renderForms() {
+      const el = $('forms');
+      const forms = state.forms || [];
+      if (!forms.length) {
+        el.innerHTML = '';
+        el.classList.remove('show');
+        return;
+      }
+      el.classList.add('show');
+      el.innerHTML = forms.map((f) => {
+        const fid = String(f.id || '');
+        const body = (f.fields || []).filter((x) => x && !x.hidden)
+          .map((x) => fieldHtml(fid, x, fieldValue(fid, x))).join('');
+        return '<div class="qcard"><div class="qtitle">' + escapeHtml(f.title || 'Question') + '</div>' + body +
+          '<div class="qrow">' +
+          '<button type="button" class="qskip" data-act="skip" data-form="' + escapeHtml(fid) + '">Don\'t answer</button>' +
+          '<button type="button" class="qsend" data-act="send" data-form="' + escapeHtml(fid) + '">Send</button>' +
+          '</div></div>';
+      }).join('');
+    }
+
+    async function loadForms(quiet) {
+      if (!state.activeId) return;
+      try {
+        const d = await api('/api/session/' + encodeURIComponent(state.activeId) + '/form');
+        const forms = (d && (Array.isArray(d) ? d : d.data)) || [];
+        state.forms = forms.filter((x) => x && x.id);
+        renderForms();
+      } catch (e) {
+        if (!quiet) setStatus('questions: ' + e.message, true);
+      }
+    }
+
+    async function replyForm(fid) {
+      const form = (state.forms || []).find((f) => String(f.id) === String(fid));
+      if (!form) return;
+      const answer = {};
+      let missing = '';
+      for (const f of (form.fields || [])) {
+        if (!f || f.hidden || f.type === 'external') continue;
+        const v = fieldValue(fid, f);
+        if (f.required && isBlank(v)) { missing = f.title || f.key; break; }
+        if (!isBlank(v)) answer[f.key] = v;
+      }
+      if (missing) { setStatus('Answer required: ' + missing, true); return; }
+      try {
+        await api('/api/session/' + encodeURIComponent(state.activeId) + '/form/' + encodeURIComponent(fid) + '/reply', {
+          method: 'POST',
+          body: JSON.stringify({ answer }),
+        });
+        delete formAnswer[fid];
+        setStatus('Answered');
+        setThinking(true);
+        await loadForms(true);
+        for (let i = 0; i < 45; i++) {
+          await new Promise((r) => setTimeout(r, 800));
+          const msgs = await fetchRecentMessages(state.activeId).catch(() => null);
+          if (!msgs) continue;
+          const last = msgs[msgs.length - 1];
+          const n = last ? normalizeMessage(last) : null;
+          const body = n ? textFromNormalized(n) : '';
+          if (n && n.type === 'assistant' && body) break;
+        }
+        setThinking(false);
+        state.fingerprint = '';
+        await syncHistory({ quiet: true, force: true, forceScroll: true });
+      } catch (e) {
+        setThinking(false);
+        setStatus(e.message, true);
+      }
+    }
+
+    async function skipForm(fid) {
+      try {
+        await api('/api/session/' + encodeURIComponent(state.activeId) + '/form/' + encodeURIComponent(fid) +
+          '?message=' + encodeURIComponent('Skipped from phone UI'), { method: 'DELETE' });
+        delete formAnswer[fid];
+        await loadForms(true);
+        setStatus('Question skipped');
+      } catch (e) {
+        setStatus(e.message, true);
+      }
+    }
+
+    async function stopRun() {
+      if (!state.activeId) return;
+      const btn = $('btnStop');
+      btn.disabled = true;
+      setStatus('Stopping…');
+      try {
+        const r = await api('/api/session/' + encodeURIComponent(state.activeId) + '/interrupt', {
+          method: 'POST',
+          body: '{}',
+        });
+        setStatus(r && r.interrupted ? 'Stopped' : 'Nothing running');
+      } catch (e) {
+        setStatus('Stop failed: ' + e.message, true);
+      } finally {
+        setThinking(false);
+        btn.disabled = false;
+        btn.hidden = true;
+        $('btnSend').disabled = false;
+        $('btnAttach').disabled = false;
+        state.fingerprint = '';
+        await syncHistory({ quiet: true, force: true }).catch(() => {});
+      }
+    }
+
     function setThinking(on) {
       state.thinking = !!on;
       const el = $('transcript');
+      const stop = $('btnStop');
+      if (stop) { stop.hidden = !on; if (!on) stop.disabled = false; }
       let tip = el.querySelector('.thinking');
       if (!on) {
         if (tip) tip.remove();
@@ -911,6 +1114,7 @@
       if (window.matchMedia('(max-width: 720px)').matches) $('btnBack').style.display = '';
       renderSessions($('search').value);
       await syncHistory({ initial: true });
+      await loadForms(true);
     }
 
     async function syncHistory(opts = {}) {
@@ -923,6 +1127,7 @@
       try {
         const msgs = await fetchRecentMessages(state.activeId);
         paintMessages(msgs, { forceScroll: initial || !!opts.forceScroll });
+        loadForms(true);
         if (!quiet && !state.thinking) {
           const hint = state._emptyHint ? (' · ' + state._emptyHint) : '';
           setStatus('Synced · last ' + msgs.length + ' · ' + BUILD + hint);
@@ -1130,6 +1335,36 @@
     $('btnRefreshList').onclick = loadSessions;
     $('btnSync').onclick = syncHistory;
     $('btnSend').onclick = sendMessage;
+    $('btnStop').onclick = stopRun;
+    $('forms').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      const act = b.dataset.act;
+      const fid = b.dataset.form;
+      if (act === 'send') return replyForm(fid);
+      if (act === 'skip') return skipForm(fid);
+      const key = b.dataset.key;
+      const val = b.dataset.val;
+      formAnswer[fid] = formAnswer[fid] || {};
+      if (act === 'pick' || act === 'bool') {
+        formAnswer[fid][key] = act === 'bool' ? (val === 'true') : val;
+      } else if (act === 'multi') {
+        const cur = Array.isArray(formAnswer[fid][key]) ? formAnswer[fid][key].slice() : [];
+        const i = cur.indexOf(val);
+        if (i >= 0) cur.splice(i, 1); else cur.push(val);
+        formAnswer[fid][key] = cur;
+      } else {
+        return;
+      }
+      renderForms();
+    });
+    $('forms').addEventListener('input', (e) => {
+      const inp = e.target.closest('input[data-key]');
+      if (!inp) return;
+      const fid = inp.dataset.form;
+      formAnswer[fid] = formAnswer[fid] || {};
+      formAnswer[fid][inp.dataset.key] = inp.value;
+    });
     $('btnAttach').onclick = () => $('filePick').click();
     $('filePick').onchange = (e) => onFilesPicked(e.target.files);
     $('btnSettings').onclick = () => {
