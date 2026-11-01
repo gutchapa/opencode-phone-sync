@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v22</title>
+  <title>OpenCode Sync v23</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -88,6 +88,13 @@
       border-top: 1px solid var(--border); background: var(--panel);
     }
     #chatMeta { font-size: 11px; color: var(--muted); margin-top: -6px; }
+    .session { position: relative; }
+    .session .del {
+      position: absolute; top: 6px; right: 6px;
+      border: 0; background: transparent; color: var(--muted);
+      font-size: 15px; line-height: 1; padding: 4px 6px; cursor: pointer;
+    }
+    .session .del:hover { color: var(--danger); }
     #modelList { max-height: 55vh; overflow: auto; margin-top: 8px; }
     #modelList button {
       display: block; width: 100%; text-align: left; margin-bottom: 6px;
@@ -271,7 +278,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v22</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v23</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -329,7 +336,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v22';
+    const BUILD = 'v23';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -777,6 +784,7 @@
         const updated = when((s.time && s.time.updated) || s.updated);
         const active = s.id === state.activeId ? ' active' : '';
         return '<div class="session' + active + '" data-id="' + escapeHtml(s.id) + '">' +
+          '<button type="button" class="del" data-del="' + escapeHtml(s.id) + '" title="Delete session">×</button>' +
           '<div class="title">' + escapeHtml(s.title || s.id) + '</div>' +
           '<div class="meta">' + escapeHtml(updated) + (dir ? ' · ' + escapeHtml(shortPath(dir)) : '') + '</div></div>';
       }).join('');
@@ -1559,6 +1567,34 @@
     $('btnRefreshList').onclick = loadSessions;
     $('btnSync').onclick = syncHistory;
     $('btnSend').onclick = sendMessage;
+    $('sessions').addEventListener('click', async (e) => {
+      const del = e.target.closest('[data-del]');
+      if (!del) return;
+      e.stopPropagation();
+      const id = del.dataset.del;
+      const s = state.sessions.find((x) => x.id === id);
+      const label = (s && s.title) || id;
+      if (!window.confirm('Delete session?\n\n' + label)) return;
+      try {
+        await api('/api/session/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (state.activeId === id) {
+          state.activeId = null;
+          state.fingerprint = '';
+          $('transcript').innerHTML = '<div class="empty">Session deleted</div>';
+          $('prompt').disabled = true;
+          $('btnSend').disabled = true;
+          $('btnAttach').disabled = true;
+          $('chatMeta').textContent = '';
+          $('chatTitle').textContent = 'Pick a session';
+          document.getElementById('app').classList.remove('chat-mode');
+          document.getElementById('app').classList.add('list-mode');
+        }
+        await loadSessions();
+        setStatus('Session deleted');
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    });
     $('btnNew').onclick = newSession;
     $('modelSearch').addEventListener('input', renderModelList);
     $('modelList').addEventListener('click', (e) => {

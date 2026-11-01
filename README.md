@@ -19,7 +19,7 @@ the wrong way, and see when every message was sent.
 
 - Transcript of the recent messages of any session, newest at the bottom.
 - `+ New` starts a fresh session that inherits the agent and model of the one
-  you are in.
+  you are in. The `x` on a session row deletes that session after a confirmation.
 - Slash commands: `/model` (searchable picker over every model the server
   reports), `/compact`, `/fork`, `/export`, `/new`, `/stop`. Project commands
   such as `/init` and `/review` come from the server and show up in the same
