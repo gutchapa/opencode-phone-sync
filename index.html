@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v19</title>
+  <title>OpenCode Sync v20</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -264,7 +264,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v19</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v20</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -315,7 +315,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v19';
+    const BUILD = 'v20';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -1325,9 +1325,18 @@
     async function newSession() {
       setStatus('Creating session…');
       try {
+        // A session created without agent/model cannot resolve a provider later
+        const cur = state.sessions.find((x) => x.id === state.activeId) ||
+          state.sessions.find((x) => x.model && x.model.id);
+        const body = { title: 'Phone session' };
+        if (cur && cur.agent) body.agent = cur.agent;
+        if (cur && cur.model && cur.model.id) {
+          body.model = { id: cur.model.id, providerID: cur.model.providerID };
+          if (cur.model.variant) body.model.variant = cur.model.variant;
+        }
         const d = await api('/api/session', {
           method: 'POST',
-          body: JSON.stringify({ title: 'Phone session' }),
+          body: JSON.stringify(body),
         });
         const s = (d && (d.data || d)) || {};
         await loadSessions();
