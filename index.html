@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v21</title>
+  <title>OpenCode Sync v22</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -87,6 +87,13 @@
     .composer-wrap {
       border-top: 1px solid var(--border); background: var(--panel);
     }
+    #chatMeta { font-size: 11px; color: var(--muted); margin-top: -6px; }
+    #modelList { max-height: 55vh; overflow: auto; margin-top: 8px; }
+    #modelList button {
+      display: block; width: 100%; text-align: left; margin-bottom: 6px;
+      background: #1a2332; border-color: var(--border); font-size: 13px;
+    }
+    #modelList button small { display: block; color: var(--muted); font-size: 11px; }
     #cmdBar { display: none; gap: 6px; padding: 0 12px 6px; flex-wrap: wrap; }
     #cmdBar.show { display: flex; }
     #cmdBar button {
@@ -264,7 +271,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v21</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v22</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -275,6 +282,7 @@
       <header>
         <button type="button" id="btnBack" class="btn" style="display:none">←</button>
         <h1 id="chatTitle">Pick a session</h1>
+        <div id="chatMeta"></div>
         <button type="button" id="btnNew" title="New session">+ New</button>
         <button type="button" id="btnSync">Sync</button>
         <span id="status"></span>
@@ -297,6 +305,12 @@
     </main>
   </div>
 
+  <dialog id="models">
+    <h2 style="margin:0 0 6px;font-size:16px">Model</h2>
+    <input id="modelSearch" placeholder="Search models" autocomplete="off" />
+    <div id="modelList"></div>
+  </dialog>
+
   <dialog id="settings">
     <form method="dialog" id="settingsForm">
       <h2 style="margin:0 0 4px;font-size:16px">Connect</h2>
@@ -315,13 +329,13 @@
   </dialog>
 
   <script>
-    const BUILD = 'v21';
+    const BUILD = 'v22';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
     const MAX_FILE_BYTES = 12 * 1024 * 1024;
     const $ = (id) => document.getElementById(id);
-    const state = { sessions: [], activeId: null, loading: false, pendingFiles: [], fingerprint: '', thinking: false, forms: [], commands: [] };
+    const state = { sessions: [], activeId: null, loading: false, pendingFiles: [], fingerprint: '', thinking: false, forms: [], commands: [], models: [] };
 
     function cfg() {
       return {
@@ -1132,6 +1146,7 @@
       state.thinking = false;
       const s = state.sessions.find((x) => x.id === id);
       $('chatTitle').textContent = (s && s.title) || id;
+      renderChatMeta(s);
       $('prompt').disabled = false;
       $('btnSend').disabled = false;
       $('btnAttach').disabled = false;
@@ -1298,6 +1313,7 @@
       { name: 'compact', description: 'compact this session' },
       { name: 'fork', description: 'fork this session' },
       { name: 'export', description: 'download this session as JSON' },
+      { name: 'model', description: 'switch the model for this session' },
     ];
 
     async function runLocalCommand(name) {
@@ -1320,6 +1336,7 @@
         setStatus('Forked');
         return;
       }
+      if (name === 'model') return openModelPicker();
       if (name === 'export') {
         setStatus('Exporting…');
         const res = await fetch(apiUrl('/api/experimental/session/' + encodeURIComponent(sid) + '/export'), {
@@ -1337,6 +1354,63 @@
         return;
       }
       setStatus('Unknown command: /' + name, true);
+    }
+
+    async function openModelPicker() {
+      $('modelSearch').value = '';
+      $('modelList').innerHTML = '<div class="empty">Loading models…</div>';
+      $('models').showModal();
+      try {
+        if (!state.models.length) {
+          const d = await api('/api/model');
+          state.models = ((d && d.data) || []).filter((m) => m && m.id && m.providerID);
+        }
+      } catch (e) {
+        $('modelList').innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
+        return;
+      }
+      renderModelList();
+    }
+
+    function renderModelList() {
+      const q = $('modelSearch').value.trim().toLowerCase();
+      const cur = (state.sessions.find((x) => x.id === state.activeId) || {}).model || {};
+      const hits = state.models.filter((m) => {
+        if (!q) return true;
+        return (m.name || '').toLowerCase().includes(q) ||
+          (m.providerID + '/' + m.id).toLowerCase().includes(q);
+      }).slice(0, 80);
+      $('modelList').innerHTML = hits.map((m) => {
+        const on = m.id === cur.id && m.providerID === cur.providerID;
+        return '<button type="button" data-p="' + escapeHtml(m.providerID) + '" data-m="' + escapeHtml(m.id) + '">' +
+          escapeHtml(m.name || m.id) + (on ? ' ✓' : '') +
+          '<small>' + escapeHtml(m.providerID + '/' + m.id) + '</small></button>';
+      }).join('') || '<div class="empty">No match</div>';
+    }
+
+    async function pickModel(providerID, id) {
+      if (!state.activeId) return;
+      $('models').close();
+      setStatus('Switching model…');
+      try {
+        await api('/api/session/' + encodeURIComponent(state.activeId) + '/model', {
+          method: 'POST',
+          body: JSON.stringify({ model: { id, providerID } }),
+        });
+        await loadSessions();
+        const s = state.sessions.find((x) => x.id === state.activeId) || state.sessions[0];
+        if (s) renderChatMeta(s);
+        setStatus('Model: ' + providerID + '/' + id);
+      } catch (e) {
+        setStatus(e.message, true);
+      }
+    }
+
+    function renderChatMeta(s) {
+      const m = s && s.model;
+      $('chatMeta').textContent = m && m.id
+        ? (s.agent ? s.agent + ' · ' : '') + m.providerID + '/' + m.id + (m.variant ? ' (' + m.variant + ')' : '')
+        : '';
     }
 
     async function loadCommands() {
@@ -1486,6 +1560,11 @@
     $('btnSync').onclick = syncHistory;
     $('btnSend').onclick = sendMessage;
     $('btnNew').onclick = newSession;
+    $('modelSearch').addEventListener('input', renderModelList);
+    $('modelList').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-m]');
+      if (b) pickModel(b.dataset.p, b.dataset.m);
+    });
     $('cmdBar').addEventListener('click', (e) => {
       const b = e.target.closest('[data-cmd]');
       if (!b) return;
