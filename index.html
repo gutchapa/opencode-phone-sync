@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v17</title>
+  <title>OpenCode Sync v18</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -87,6 +87,13 @@
     .composer-wrap {
       border-top: 1px solid var(--border); background: var(--panel);
     }
+    #cmdBar { display: none; gap: 6px; padding: 0 12px 6px; flex-wrap: wrap; }
+    #cmdBar.show { display: flex; }
+    #cmdBar button {
+      border-radius: 14px; padding: 5px 10px; font-size: 12px;
+      background: #1a2332; border-color: var(--border); color: var(--text);
+    }
+    #cmdBar button small { color: var(--muted); }
     #attachBar {
       display: none; gap: 8px; flex-wrap: wrap; padding: 8px 12px 0;
       align-items: center;
@@ -257,7 +264,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v17</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v18</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -268,12 +275,14 @@
       <header>
         <button type="button" id="btnBack" class="btn" style="display:none">←</button>
         <h1 id="chatTitle">Pick a session</h1>
+        <button type="button" id="btnNew" title="New session">+ New</button>
         <button type="button" id="btnSync">Sync</button>
         <span id="status"></span>
       </header>
       <div id="transcript"><div class="empty">Latest messages only (not full history).</div></div>
       <div id="forms"></div>
       <div class="composer-wrap">
+        <div id="cmdBar"></div>
         <div id="attachBar"></div>
         <div class="composer">
           <input type="file" id="filePick" accept="image/*,application/pdf,text/*,.md,.txt,.json,.csv,.py,.js,.ts,.tsx,.jsx" multiple hidden />
@@ -306,13 +315,13 @@
   </dialog>
 
   <script>
-    const BUILD = 'v17';
+    const BUILD = 'v18';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
     const MAX_FILE_BYTES = 12 * 1024 * 1024;
     const $ = (id) => document.getElementById(id);
-    const state = { sessions: [], activeId: null, loading: false, pendingFiles: [], fingerprint: '', thinking: false, forms: [] };
+    const state = { sessions: [], activeId: null, loading: false, pendingFiles: [], fingerprint: '', thinking: false, forms: [], commands: [] };
 
     function cfg() {
       return {
@@ -1283,6 +1292,52 @@
       }
     }
 
+    async function loadCommands() {
+      try {
+        const d = await api('/api/command');
+        const list = (d && (d.data || d.commands)) || [];
+        state.commands = Array.isArray(list) ? list.filter((c) => c && c.name) : [];
+      } catch { state.commands = []; }
+    }
+
+    function renderCmdBar() {
+      const bar = $('cmdBar');
+      const val = ($('prompt').value || '').trimStart();
+      if (!val.startsWith('/') || val.includes(' ')) {
+        bar.classList.remove('show');
+        bar.innerHTML = '';
+        return;
+      }
+      const q = val.slice(1).toLowerCase();
+      const hits = state.commands.filter((c) => c.name.toLowerCase().startsWith(q)).slice(0, 6);
+      if (!hits.length) {
+        bar.classList.remove('show');
+        bar.innerHTML = '';
+        return;
+      }
+      bar.classList.add('show');
+      bar.innerHTML = hits.map((c) =>
+        '<button type="button" data-cmd="' + escapeHtml(c.name) + '">/' + escapeHtml(c.name) +
+        (c.description ? ' <small>' + escapeHtml(String(c.description).slice(0, 40)) + '</small>' : '') +
+        '</button>').join('');
+    }
+
+    async function newSession() {
+      setStatus('Creating session…');
+      try {
+        const d = await api('/api/session', {
+          method: 'POST',
+          body: JSON.stringify({ title: 'Phone session' }),
+        });
+        const s = (d && (d.data || d)) || {};
+        await loadSessions();
+        if (s.id) await openSession(s.id);
+        else setStatus('Session created', false);
+      } catch (e) {
+        setStatus(e.message, true);
+      }
+    }
+
     async function sendMessage() {
       const text = $('prompt').value.trim();
       const files = state.pendingFiles.slice();
@@ -1305,9 +1360,13 @@
             name: f.name,
           }));
         }
-        await api('/api/session/' + encodeURIComponent(state.activeId) + '/prompt', {
+        const cmd = /^\/([A-Za-z0-9_.:-]+)(?:\s+([\s\S]*))?$/.exec(text);
+        const endpoint = cmd ? '/command' : '/prompt';
+        const payload = cmd ? { name: cmd[1], text: cmd[2] || '' } : body;
+        if (cmd && body.files) payload.files = body.files;
+        await api('/api/session/' + encodeURIComponent(state.activeId) + endpoint, {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: JSON.stringify(payload),
         });
 
         // Prefer server-side wait — no mid-flight transcript rewrites
@@ -1351,6 +1410,15 @@
     $('btnRefreshList').onclick = loadSessions;
     $('btnSync').onclick = syncHistory;
     $('btnSend').onclick = sendMessage;
+    $('btnNew').onclick = newSession;
+    $('cmdBar').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-cmd]');
+      if (!b) return;
+      $('prompt').value = '/' + b.dataset.cmd + ' ';
+      $('prompt').focus();
+      renderCmdBar();
+    });
+    $('prompt').addEventListener('input', renderCmdBar);
     $('btnStop').onclick = stopRun;
     $('forms').addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]');
@@ -1413,6 +1481,7 @@
       }
     });
 
+    loadCommands();
     loadSessions();
   </script>
 </body>
