@@ -18,6 +18,12 @@ the wrong way, and see when every message was sent.
 ## Features
 
 - Transcript of the recent messages of any session, newest at the bottom.
+- `+ New` starts a fresh session that inherits the agent and model of the one
+  you are in.
+- Slash commands: `/model` (searchable picker over every model the server
+  reports), `/compact`, `/fork`, `/export`, `/new`, `/stop`. Project commands
+  such as `/init` and `/review` come from the server and show up in the same
+  list as you type `/`.
 - Tool calls and their output in collapsible folds; `question` folds open by
   default so the question body is readable.
 - Pending question forms render as cards: single select, multi-select, boolean,
