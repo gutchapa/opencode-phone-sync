@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v18</title>
+  <title>OpenCode Sync v19</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -264,7 +264,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v18</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v19</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -315,7 +315,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v18';
+    const BUILD = 'v19';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -1001,7 +1001,7 @@
       const el = $('transcript');
       const stick = forceScroll || nearBottom(el);
       const fp = fingerprintMsgs(msgs);
-      if (fp === state.fingerprint && el.querySelector('.msg, .thinking, .empty')) {
+      if (msgs.length && fp === state.fingerprint && el.querySelector('.msg, .thinking, .empty')) {
         if (state.thinking) setThinking(true);
         return false;
       }
