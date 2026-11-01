@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v23</title>
+  <title>OpenCode Sync v24</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -101,6 +101,12 @@
       background: #1a2332; border-color: var(--border); font-size: 13px;
     }
     #modelList button small { display: block; color: var(--muted); font-size: 11px; }
+    #atBar { display: none; gap: 6px; padding: 0 12px 6px; flex-wrap: wrap; }
+    #atBar.show { display: flex; }
+    #atBar button {
+      border-radius: 12px; padding: 5px 9px; font-size: 12px;
+      background: #1a2332; border-color: var(--border); color: var(--text);
+    }
     #cmdBar { display: none; gap: 6px; padding: 0 12px 6px; flex-wrap: wrap; }
     #cmdBar.show { display: flex; }
     #cmdBar button {
@@ -278,7 +284,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v23</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v24</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
@@ -298,6 +304,7 @@
       <div id="forms"></div>
       <div class="composer-wrap">
         <div id="cmdBar"></div>
+        <div id="atBar"></div>
         <div id="attachBar"></div>
         <div class="composer">
           <input type="file" id="filePick" accept="image/*,application/pdf,text/*,.md,.txt,.json,.csv,.py,.js,.ts,.tsx,.jsx" multiple hidden />
@@ -336,7 +343,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v23';
+    const BUILD = 'v24';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -1316,7 +1323,8 @@
     }
 
     const LOCAL_COMMANDS = [
-      { name: 'new', description: 'start a new session' },
+      { name: 'new', description: 'start a new session, optional directory' },
+      { name: 'cd', description: 'move this session to a directory' },
       { name: 'stop', description: 'interrupt the running turn' },
       { name: 'compact', description: 'compact this session' },
       { name: 'fork', description: 'fork this session' },
@@ -1324,9 +1332,23 @@
       { name: 'model', description: 'switch the model for this session' },
     ];
 
-    async function runLocalCommand(name) {
+    async function runLocalCommand(name, arg) {
       const sid = state.activeId;
-      if (name === 'new') return newSession();
+      if (name === 'new') return newSession(arg);
+      if (name === 'cd') {
+        if (!arg) return setStatus('Usage: /cd /absolute/path', true);
+        setStatus('Moving…');
+        const d = await api('/api/session/' + encodeURIComponent(sid) + '/move', {
+          method: 'POST',
+          body: JSON.stringify({ directory: arg.trim() }),
+        });
+        const moved = (d && (d.data || d)) || {};
+        await loadSessions();
+        const cur = state.sessions.find((x) => x.id === sid);
+        if (cur) renderChatMeta(cur);
+        setStatus('Directory: ' + (moved.directory || arg.trim()));
+        return;
+      }
       if (name === 'stop') return stopRun();
       if (!sid) return setStatus('Open a session first', true);
       if (name === 'compact') {
@@ -1421,6 +1443,47 @@
         : '';
     }
 
+    function currentDir() {
+      const s = state.sessions.find((x) => x.id === state.activeId) || {};
+      return (s.location && s.location.directory) || s.directory || '';
+    }
+
+    let atTimer = null;
+    function scheduleAt() {
+      clearTimeout(atTimer);
+      atTimer = setTimeout(updateAtBar, 160);
+    }
+
+    async function updateAtBar() {
+      const el = $('atBar');
+      const m = /@([^\s@]*)$/.exec($('prompt').value);
+      if (!m || !state.activeId) {
+        el.classList.remove('show');
+        el.innerHTML = '';
+        return;
+      }
+      const q = m[1];
+      const dir = currentDir();
+      try {
+        let url = '/api/fs/find?query=' + encodeURIComponent(q || '.') + '&limit=8';
+        if (dir) url += '&location%5Bdirectory%5D=' + encodeURIComponent(dir);
+        const d = await api(url);
+        const hits = (d && d.data) || [];
+        if (!hits.length) {
+          el.classList.remove('show');
+          el.innerHTML = '';
+          return;
+        }
+        el.classList.add('show');
+        el.innerHTML = hits.map((h) =>
+          '<button type="button" data-at="' + escapeHtml(h.path) + '">' +
+          escapeHtml(h.path) + (h.type === 'directory' ? '/' : '') + '</button>').join('');
+      } catch {
+        el.classList.remove('show');
+        el.innerHTML = '';
+      }
+    }
+
     async function loadCommands() {
       try {
         const d = await api('/api/command');
@@ -1452,13 +1515,14 @@
         '</button>').join('');
     }
 
-    async function newSession() {
+    async function newSession(dir) {
       setStatus('Creating session…');
       try {
         // A session created without agent/model cannot resolve a provider later
         const cur = state.sessions.find((x) => x.id === state.activeId) ||
           state.sessions.find((x) => x.model && x.model.id);
         const body = { title: 'Phone session' };
+        if (dir && String(dir).trim()) body.location = { directory: String(dir).trim() };
         if (cur && cur.agent) body.agent = cur.agent;
         if (cur && cur.model && cur.model.id) {
           body.model = { id: cur.model.id, providerID: cur.model.providerID };
@@ -1481,12 +1545,12 @@
       const text = $('prompt').value.trim();
       const files = state.pendingFiles.slice();
       if ((!text && !files.length) || !state.activeId) return;
-      const localCmd = /^\/([A-Za-z0-9_.:-]+)\s*$/.exec(text);
+      const localCmd = /^\/([A-Za-z0-9_.:-]+)\s*([\s\S]*)$/.exec(text);
       if (localCmd && !files.length && LOCAL_COMMANDS.some((c) => c.name === localCmd[1])) {
         $('prompt').value = '';
         renderCmdBar();
         try {
-          await runLocalCommand(localCmd[1]);
+          await runLocalCommand(localCmd[1], localCmd[2] || '');
         } catch (e) {
           setStatus(e.message, true);
         }
@@ -1609,6 +1673,16 @@
       renderCmdBar();
     });
     $('prompt').addEventListener('input', renderCmdBar);
+    $('prompt').addEventListener('input', scheduleAt);
+    $('atBar').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-at]');
+      if (!b) return;
+      const ta = $('prompt');
+      ta.value = ta.value.replace(/@([^\s@]*)$/, '@' + b.dataset.at + ' ');
+      ta.focus();
+      $('atBar').classList.remove('show');
+      $('atBar').innerHTML = '';
+    });
     $('btnStop').onclick = stopRun;
     $('forms').addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]');
