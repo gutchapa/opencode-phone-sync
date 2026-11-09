@@ -15,10 +15,14 @@ import base64
 import hmac
 import http.client
 import http.server
+import json
 import os
+import re
 import socket
 import sys
+import time
 import urllib.parse
+import uuid
 
 UPSTREAM_HOST = os.environ.get("OPENCODE_UPSTREAM_HOST", "127.0.0.1")
 UPSTREAM_PORT = int(os.environ.get("OPENCODE_UPSTREAM_PORT", "4096"))
@@ -31,6 +35,9 @@ PASSWORD = (
 )
 USERNAME = os.environ.get("OPENCODE_USERNAME", "opencode")
 ROOT = os.path.dirname(os.path.abspath(__file__))
+# Phone attachments are written here so the agent can open them by path
+UPLOAD_DIR = os.environ.get("OPENCODE_UPLOAD_DIR") or os.path.join(ROOT, "uploads")
+MAX_BODY = 32 * 1024 * 1024
 
 
 def basic_auth_header() -> str:
@@ -65,6 +72,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/upload":
+            return self._upload(parsed)
         if parsed.path.startswith("/api/"):
             return self._proxy()
         self.send_error(404, "Not found")
@@ -112,6 +121,58 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_body(self):
+        """Read the request body, or send an error and return None."""
+        raw_len = (self.headers.get("Content-Length") or "0").strip()
+        try:
+            length = int(raw_len)
+        except ValueError:
+            self.send_error(400, "Bad Content-Length")
+            return None
+        if length < 0:
+            self.send_error(400, "Bad Content-Length")
+            return None
+        if length > MAX_BODY:
+            self.send_error(413, "Payload too large")
+            return None
+        return self.rfile.read(length) if length else b""
+
+    def _upload(self, parsed: urllib.parse.ParseResult) -> None:
+        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+            self.close_connection = True
+            self.send_error(403, "Cross-site request rejected")
+            return
+        if not self._authorized():
+            self.close_connection = True
+            return self._unauthorized()
+        body = self._read_body()
+        if body is None:
+            return
+        name = urllib.parse.parse_qs(parsed.query).get("name", ["file"])[0]
+        base = os.path.basename(name.replace("\\", "/"))
+        base = re.sub(r"[^A-Za-z0-9._-]", "_", base).lstrip(".")[:120] or "file"
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        dest = os.path.join(UPLOAD_DIR, f"{stamp}-{uuid.uuid4().hex[:4]}-{base}")
+        try:
+            os.makedirs(UPLOAD_DIR, mode=0o700, exist_ok=True)
+            with open(dest, "wb") as f:
+                f.write(body)
+            os.chmod(dest, 0o600)
+        except OSError as e:
+            msg = f"upload failed: {e}".encode()
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(msg)))
+            self.end_headers()
+            self.wfile.write(msg)
+            return
+        payload = json.dumps({"path": dest, "name": base, "bytes": len(body)}).encode()
+        self.send_response(201)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _proxy(self) -> None:
         if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
             self.close_connection = True
@@ -120,19 +181,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self._authorized():
             self.close_connection = True
             return self._unauthorized()
-        raw_len = (self.headers.get("Content-Length") or "0").strip()
-        try:
-            length = int(raw_len)
-        except ValueError:
-            self.send_error(400, "Bad Content-Length")
+        body = self._read_body()
+        if body is None:
             return
-        if length < 0:
-            self.send_error(400, "Bad Content-Length")
-            return
-        if length > 32 * 1024 * 1024:
-            self.send_error(413, "Payload too large")
-            return
-        body = self.rfile.read(length) if length else None
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if parsed.query:

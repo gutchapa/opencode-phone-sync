@@ -34,8 +34,11 @@ the wrong way, and see when every message was sent.
 - Pending question forms render as cards: single select, multi-select, boolean,
   text, and free-text override, with `Send` and `Don't answer`.
 - Stop button that interrupts the running turn.
-- Photo and file attachments, inlined as base64 `file` parts (32 MB request cap,
-  images downscaled to 1600 px).
+- Photo and file attachments (32 MB request cap, images downscaled to 1600 px).
+  Every attachment is written to the server first (`POST /upload`), and its
+  absolute path is added to the message so the agent can unzip, convert or open
+  it with its own tools; images are also sent inline so the model can see them
+  without touching the filesystem.
 - Per-message timestamps in the browser's local timezone.
 - No external assets, no telemetry, no CDN, no framework.
 
@@ -71,9 +74,23 @@ Environment variables:
 | `OPENCODE_UPSTREAM_PORT` | `4096` | upstream port |
 | `OPENCODE_SYNC_HOST` | `0.0.0.0` | listen address; use `127.0.0.1` with tailscale serve |
 | `OPENCODE_SYNC_PORT` | `8787` | listen port |
+| `OPENCODE_UPLOAD_DIR` | `<serve.py dir>/uploads` | where phone attachments are written |
 
 Use the system interpreter on macOS (`/usr/bin/python3`) if a per-app firewall
 such as LuLu blocks a uv- or Homebrew-managed Python on the Tailscale interface.
+
+## Attachments
+
+Files picked on the phone are `POST`ed to `/upload?name=<file>` on the proxy,
+which needs the same Basic auth as the API. The proxy sanitises the name, drops
+the directory part, and writes it as `600` into `OPENCODE_UPLOAD_DIR`
+(default `<serve.py dir>/uploads`, `700`), as
+`YYYYMMDD-HHMMSS-<rand>-<name>`. The UI then appends the absolute paths to the
+message text, so the agent can `unzip`, `pdftotext`, `git apply` and so on.
+
+Images are additionally sent inline, so the model can look at them even if it
+never opens the file. Nothing is ever deleted automatically; clean the directory
+when it grows.
 
 ## HTTPS with Tailscale (recommended)
 

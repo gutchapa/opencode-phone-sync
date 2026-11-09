@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v24</title>
+  <title>OpenCode Sync v25</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -284,7 +284,7 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v24</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v25</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnNewList" title="New session">+ New</button>
         <button type="button" id="btnRefreshList">Refresh</button>
@@ -344,7 +344,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v24';
+    const BUILD = 'v25';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -1288,6 +1288,24 @@
       };
     }
 
+    async function uploadAttachment(att) {
+      const bin = atob(att.data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const res = await fetch(apiUrl('/upload?name=' + encodeURIComponent(att.name || 'file')), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', Authorization: authHeader() },
+        body: bytes,
+      });
+      const raw = await res.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
+      if (!res.ok) {
+        throw new Error(res.status + ': ' + ((data && (data.error || data.message)) || raw || res.statusText));
+      }
+      return data;
+    }
+
     async function onFilesPicked(fileList) {
       const files = Array.from(fileList || []);
       if (!files.length) return;
@@ -1567,9 +1585,26 @@
       state.pendingFiles = [];
       renderAttachBar();
       try {
-        const body = { text: displayText };
-        if (files.length) {
-          body.files = files.map((f) => ({
+        // Materialise attachments on the server first, so the agent can open them
+        // by path. Images are also sent inline, so the model can look at them.
+        const saved = [];
+        for (const f of files) {
+          try {
+            saved.push(await uploadAttachment(f));
+          } catch (e) {
+            setStatus('Attachment not saved: ' + e.message, true);
+          }
+        }
+        const parts = [displayText];
+        if (saved.length) {
+          parts.push('', 'Files saved on the server:');
+          for (const s of saved) parts.push('- ' + s.path);
+          parts.push('', 'Use these paths with your tools; do not assume their contents.');
+        }
+        const body = { text: parts.join('\n').trim() };
+        const inline = files.filter((f) => String(f.mime || '').startsWith('image/'));
+        if (inline.length) {
+          body.files = inline.map((f) => ({
             uri: 'data:' + (f.mime || 'application/octet-stream') + ';base64,' + f.data,
             source: { type: 'inline' },
             name: f.name,
