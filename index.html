@@ -1660,8 +1660,8 @@
         setStatus(err.message, true);
       }
     });
-    $('btnNew').onclick = newSession;
-    $('btnNewList').onclick = newSession;
+    $('btnNew').onclick = () => newSession();
+    $('btnNewList').onclick = () => newSession();
     $('modelSearch').addEventListener('input', renderModelList);
     $('modelList').addEventListener('click', (e) => {
       const b = e.target.closest('[data-m]');
