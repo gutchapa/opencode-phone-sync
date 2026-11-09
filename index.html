@@ -286,6 +286,7 @@
       <header>
         <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v24</span></h1>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
+        <button type="button" id="btnNewList" title="New session">+ New</button>
         <button type="button" id="btnRefreshList">Refresh</button>
       </header>
       <input class="search" id="search" placeholder="Search sessions" />
@@ -1660,6 +1661,7 @@
       }
     });
     $('btnNew').onclick = newSession;
+    $('btnNewList').onclick = newSession;
     $('modelSearch').addEventListener('input', renderModelList);
     $('modelList').addEventListener('click', (e) => {
       const b = e.target.closest('[data-m]');
