@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# Runtime state, never commit
+uploads/
+push-state.json
+push-state.json.tmp

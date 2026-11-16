@@ -4,7 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>OpenCode Sync v25</title>
+  <meta name="theme-color" content="#0f1115" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <title>OpenCode Sync v26</title>
   <style>
     :root {
       --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
@@ -284,7 +287,8 @@
   <div id="app" class="list-mode">
     <aside>
       <header>
-        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v25</span></h1>
+        <h1>Sessions <span style="color:var(--muted);font-weight:400;font-size:12px">v26</span></h1>
+        <button type="button" id="btnNotify" title="Notifications">🔔</button>
         <button type="button" id="btnSettings" title="Server">⚙️</button>
         <button type="button" id="btnNewList" title="New session">+ New</button>
         <button type="button" id="btnRefreshList">Refresh</button>
@@ -344,7 +348,7 @@
   </dialog>
 
   <script>
-    const BUILD = 'v25';
+    const BUILD = 'v26';
     const MSG_LIMIT = 40;
     const MAX_IMAGE_EDGE = 1600;
     const JPEG_QUALITY = 0.85;
@@ -1782,8 +1786,42 @@
       }
     });
 
+    async function enableNotifications() {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          throw new Error('this browser has no Web Push support');
+        }
+        // Ask first: browsers only allow this inside the tap handler
+        if (Notification.permission === 'denied') throw new Error('blocked in browser settings');
+        if (Notification.permission !== 'granted') {
+          const perm = await Notification.requestPermission();
+          if (perm !== 'granted') throw new Error('permission not granted');
+        }
+        const info = await api('/push/key');
+        if (!info || !info.enabled) throw new Error('notifications are not enabled on the server');
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          const raw = atob(String(info.key).replace(/-/g, '+').replace(/_/g, '/'));
+          const key = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i++) key[i] = raw.charCodeAt(i);
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+        }
+        await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
+        $('btnNotify').textContent = '🔔';
+        setStatus('Notifications on · ' + BUILD);
+      } catch (e) {
+        setStatus('Notifications: ' + e.message, true);
+      }
+    }
+
+    $('btnNotify').onclick = enableNotifications;
+
     loadCommands();
-    loadSessions();
+    loadSessions().then(() => {
+      const want = new URLSearchParams(location.search).get('session');
+      if (want) openSession(want);
+    });
   </script>
 </body>
 </html>

@@ -40,11 +40,16 @@ the wrong way, and see when every message was sent.
   it with its own tools; images are also sent inline so the model can see them
   without touching the filesystem.
 - Per-message timestamps in the browser's local timezone.
+- Web Push notification when a turn finishes: the proxy watches the session it
+  just started and pushes a notification through the browser's push service, so
+  the phone alerts even when locked. Tap the bell to subscribe.
 - No external assets, no telemetry, no CDN, no framework.
 
 ## Requirements
 
-- Python 3.9+ on the machine running the proxy. No third-party packages.
+- Python 3.9+ on the machine running the proxy. No third-party packages, except
+  `cryptography` for Web Push notifications; without it the proxy still runs and
+  the bell reports notifications unavailable.
 - A running `opencode serve` reachable on `127.0.0.1:4096` by default.
 - A phone on the same Tailscale tailnet. The proxy binds to loopback and is
   reached through `tailscale serve`, which supplies TLS. Any equivalent private
@@ -75,6 +80,7 @@ Environment variables:
 | `OPENCODE_SYNC_HOST` | `0.0.0.0` | listen address; use `127.0.0.1` with tailscale serve |
 | `OPENCODE_SYNC_PORT` | `8787` | listen port |
 | `OPENCODE_UPLOAD_DIR` | `<serve.py dir>/uploads` | where phone attachments are written |
+| `OPENCODE_PUSH_STATE` | `<serve.py dir>/push-state.json` | VAPID key + browser subscriptions, mode `600` |
 
 Use the system interpreter on macOS (`/usr/bin/python3`) if a per-app firewall
 such as LuLu blocks a uv- or Homebrew-managed Python on the Tailscale interface.
@@ -91,6 +97,28 @@ message text, so the agent can `unzip`, `pdftotext`, `git apply` and so on.
 Images are additionally sent inline, so the model can look at them even if it
 never opens the file. Nothing is ever deleted automatically; clean the directory
 when it grows.
+
+## Notifications
+
+Tap the bell above the session list and allow notifications. The page registers
+`/sw.js`, subscribes with the server's VAPID key, and `POST`s the subscription to
+`/push/subscribe` (Basic auth, stored in `OPENCODE_PUSH_STATE`, mode `600`).
+
+When a turn is started through the proxy (`/:id/prompt` or `/command` returns
+2xx), a background thread polls `GET /api/session/:id` every 3 s and, as soon as
+`time.idle` is newer than the turn's start, sends one push per subscription:
+title "OpenCode finished", body is the session title.
+
+Constraints worth knowing:
+
+- iOS only delivers Web Push to a PWA added to the Home Screen (iOS 16.4+);
+  Safari in a tab registers but never shows the notification. Android Chrome
+  works without installing.
+- The notification payload travels through the browser vendor's push service
+  (Apple/Google/Mozilla) — that is how Web Push works, and the body is only the
+  session title.
+- `cryptography` is needed for the aes128gcm encryption and the ES256 VAPID JWT;
+  if the import fails, `/push/key` reports `enabled: false` and the bell says so.
 
 ## HTTPS with Tailscale (recommended)
 
